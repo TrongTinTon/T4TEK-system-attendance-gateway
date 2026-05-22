@@ -1,0 +1,84 @@
+<odoo>
+    <!--  Menu gốc  -->
+    <menuitem 
+        id="CoreApp_root_menu" 
+        name="Core App" 
+        sequence="-1"/>
+    <!--  Menu "Người dùng"  -->
+    <menuitem 
+        id="res_users_menu" 
+        name="Users" 
+        parent="CoreApp_root_menu" 
+        action="CoreApp.CoreApp_simplified_action" 
+        sequence="2" 
+        groups="CoreApp.group_CoreApp_user,CoreApp.group_CoreApp_admin,CoreApp.group_CoreApp_manager"/>
+    <!--  Menu cha "Quản lý Ứng dụng"  -->
+    <menuitem 
+        id="app_management_root_menu" 
+        name="Configuration" 
+        parent="CoreApp_root_menu" 
+        sequence="3" 
+        groups="CoreApp.group_CoreApp_admin,CoreApp.group_CoreApp_manager"/>
+    <!--  Section tạo app -->
+    <menuitem 
+        id="app_structure_section_menu" 
+        name="Create App" 
+        parent="app_management_root_menu" 
+        sequence="1" 
+        groups="CoreApp.group_CoreApp_admin"/>
+    <!--  Menu tạo app menu  -->
+    <menuitem 
+        id="menu_core_menu_management" 
+        name="Applications" 
+        parent="app_structure_section_menu" 
+        action="action_core_menu" 
+        sequence="1" 
+        groups="CoreApp.group_CoreApp_admin"/>
+    <!--  Section tạo quyền -->
+    <menuitem 
+        id="Group_rights_menu" 
+        name="Create Rights" 
+        parent="app_management_root_menu" 
+        sequence="2" 
+        groups="CoreApp.group_CoreApp_admin"/>
+    <!--  Menu con "Applications"  -->
+    <menuitem 
+        id="applications_menu" 
+        name="Categories" 
+        parent="Group_rights_menu" 
+        action="CoreApp.CoreApp_ir_module_category_action_apps" 
+        sequence="4"
+        groups="CoreApp.group_CoreApp_admin"/>
+    <!--  Menu con "Features"  -->
+    <menuitem 
+        id="features_menu" 
+        name="Features" 
+        parent="Group_rights_menu" 
+        action="CoreApp.CoreApp_ir_module_category_action_features" 
+        sequence="5"
+        groups="CoreApp.group_CoreApp_admin"/>
+    <!--  Menu "Nhóm quyền"  -->
+    <menuitem 
+        id="CoreApp_group_menu" 
+        name="Groups" 
+        parent="Group_rights_menu" 
+        action="CoreApp.CoreApp_group_action" 
+        sequence="6" 
+        groups="CoreApp.group_CoreApp_admin"/>
+    <!-- section tạo role -->
+    <menuitem 
+        id="Role_menu" 
+        name="Create Role" 
+        parent="app_management_root_menu" 
+        sequence="3" 
+        groups="CoreApp.group_CoreApp_admin,CoreApp.group_CoreApp_manager"/>
+    <!--  Menu "Vai trò"  -->
+    <menuitem 
+        id="core_role_menu" 
+        name="Roles" 
+        parent="Role_menu" 
+        action="CoreApp.core_role_action" 
+        sequence="10" 
+        groups="CoreApp.group_CoreApp_admin,CoreApp.group_CoreApp_manager"/>
+
+</odoo>

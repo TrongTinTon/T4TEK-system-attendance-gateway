@@ -1,0 +1,14 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_res_users_for_CoreApp_user,access.res.users.for.core.app.user,base.model_res_users,CoreApp.group_CoreApp_user,1,0,0,0
+access_core_role_for_CoreApp_user,access.core.role.for.core.app.user,model_core_role,CoreApp.group_CoreApp_user,1,0,0,0
+access_core_role_for_CoreApp_manager,access.core.role.for.core.app.manager,model_core_role,CoreApp.group_CoreApp_manager,1,1,1,1
+access_category_for_CoreApp_admin,access.category.for.core.app.admin,base.model_ir_module_category,CoreApp.group_CoreApp_admin,1,1,1,1
+access_core_menu_for_CoreApp_admin,access.category.for.core.app.admin,model_core_menu,CoreApp.group_CoreApp_admin,1,1,1,1
+access_res_users_for_CoreApp_admin,access.res.users.for.core.app.admin,base.model_res_users,CoreApp.group_CoreApp_admin,1,0,0,0
+access_core_role_for_CoreApp_admin,access.core.role.for.core.app.admin,model_core_role,CoreApp.group_CoreApp_admin,1,1,1,1
+access_res_groups_for_CoreApp_admin,access.res.groups.for.core.app.admin,base.model_res_groups,CoreApp.group_CoreApp_admin,1,0,0,0
+access_category_for_CoreApp_user,access.category.for.core.app.user,base.model_ir_module_category,CoreApp.group_CoreApp_user,1,0,0,0
+access_category_for_CoreApp_manager,access.category.for.core.app.manager,base.model_ir_module_category,CoreApp.group_CoreApp_manager,1,0,0,0
+access_res_groups_for_CoreApp_manager,access.res.groups.for.core.app.admin,base.model_res_groups,CoreApp.group_CoreApp_manager,1,0,0,0
+access_res_groups_for_CoreApp_user,access.res.groups.for.core.app.admin,base.model_res_groups,CoreApp.group_CoreApp_user,1,0,0,0
+access_core_app_export_import_admin,access.core.app.export.import.admin,model_core_app_export_import,CoreApp.group_CoreApp_admin,1,1,1,1

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Giao diện Danh sách đơn giản -->
+    <record id="CoreApp_simplified_view_list" model="ir.ui.view">
+        <field name="name">core.app.simplified.list</field>
+        <field name="model">res.users</field>
+        <field name="arch" type="xml">
+            <list create = "1" edit="1" delete="1" > 
+                <field name="name"/>
+                <field name="login"/>
+                <field name="core_role_id" widget="many2many_tags" string="Role chính"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Giao diện Form đơn giản -->
+    <record id="CoreApp_simplified_view_form" model="ir.ui.view">
+        <field name="name">core.app.simplified.form</field>
+        <field name="model">res.users</field>
+        <field name="arch" type="xml">
+            <form create = "1" edit="1" delete="0" >
+                <sheet>
+                    <header>
+                        <button name="action_reset_password" string="Send Invitation Email" type="object" context="{'create_user': 1}" class="btn-primary" invisible="not id or not active or state != 'new'"/>
+                        <button name="action_reset_password" string="Send Reset Password" type="object" class="btn-primary" invisible="not id or not active or state == 'new'"/>
+                        <button name="action_archive" string="Lock Account" type="object" class="btn-primary" invisible="not active"/>
+                        <button name="action_unarchive" string="Unlock Account" type="object" class="btn-secondary" invisible="active"/>
+                    </header>
+                    <widget name="web_ribbon" title="Locked" bg_color="bg-danger" invisible="active"/>
+                    <group>
+                        <field name="name" string="Họ và tên" />
+                        <field name="email" string="Địa chỉ Email"/>
+                        <field name="password" placeholder="Empty if not change"/>
+                        <field name="core_role_id"  string="Role chính" options="{'no_create': True}"/>
+                        <field name="active" invisible="1"/>
+                    </group>
+                </sheet>
+                <chatter class="oe_chatter">
+                    <field name ="message_follower_ids"/>
+                    <field name ="message_ids"/>
+                </chatter>
+            </form>
+        </field>
+    </record>
+
+    <!-- Action để mở giao diện đơn giản -->
+    <record id="CoreApp_simplified_action" model="ir.actions.act_window">
+        <field name="name">Users</field>
+        <field name="res_model">res.users</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('is_from_CoreApp', '=', True)]</field>
+        
+        <field name="context">{'default_is_from_CoreApp': True}</field>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('CoreApp_simplified_view_list')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('CoreApp_simplified_view_form')})]"/>
+    </record>
+</odoo>

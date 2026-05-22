@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!-- Category -->
+        <record id="CoreApp_category" model="ir.module.category">
+            <field name="name">Core App</field>
+            <field name="sequence">100</field>
+        </record>
+
+        <!-- User thuộc CoreApp -->
+        <record id="group_CoreApp_user" model="res.groups">
+            <field name="name">Core App / User</field>
+            <field name="category_id" ref="CoreApp_category"/>
+        </record>
+
+        <!-- Manager -->
+        <record id="group_CoreApp_manager" model="res.groups">
+            <field name="name">Core App / Manager</field>
+            <field name="category_id" ref="CoreApp_category"/>
+            <field name="implied_ids" eval="[(4, ref('CoreApp.group_CoreApp_user'))]"/>   
+        </record>
+
+        <!-- Admin -->
+        <record id="group_CoreApp_admin" model="res.groups">
+            <field name="name">Core App / Administrator</field>
+            <field name="category_id" ref="CoreApp_category"/>
+            <field name="implied_ids" eval="[(4, ref('CoreApp.group_CoreApp_manager'))]"/>
+        </record>
+
+        <!-- 🚫 Group giữ quyền xem menu hệ thống -->
+        <!-- Ai có group này thì thấy menu hệ thống -->
+        <!-- User CoreApp sẽ KHÔNG có group này -->
+        <record id="group_core_odoo" model="res.groups">
+            <field name="name">Menu Odoo Access</field>
+            <field name="category_id" ref="CoreApp_category"/>
+        </record>
+        <record id="group_CoreApp_access" model="res.groups">
+            <field name="name">Core App / Access</field>
+            <field name="category_id" ref="CoreApp_category"/>
+        </record>
+
+        <record id="base.group_erp_manager" model="res.groups">
+            <field name="implied_ids" eval="[(4, ref('CoreApp.group_core_odoo'))]"/>
+        </record>
+
+    </data>
+</odoo>
+

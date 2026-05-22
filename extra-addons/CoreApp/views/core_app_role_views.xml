@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="core_role_view_list" model="ir.ui.view">
+        <field name="name">core.role.list</field>
+        <field name="model">core.role</field>
+        <field name="arch" type="xml">
+            <list string="Role">
+                <field name="name"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="core_role_view_form" model="ir.ui.view">
+        <field name="name">core.role.form</field>
+        <field name="model">core.role</field>
+        <field name="arch" type="xml">
+            <form string="Role">
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="Input role's name..."/>
+                        </h1>
+                    </div>
+                    <group>
+                        <field name="name"/>
+                        <field name="home_menu_id" options="{'no_create': True, 'no_open': True}" 
+                            domain="[
+                            ('is_core_app_menu', '=', True),
+                            ]"/>
+                        <field name="action_id" readonly="1" force_save="1"/>
+                        <field name="group_ids"
+                            options="{'create': False}"
+                            context="{'search_default_group_by_category_id': 1,
+                                        'list_view_ref': 'CoreApp.CoreApp_group_view_list',
+                                        'form_view_ref': 'CoreApp.CoreApp_group_view_form_readonly',
+                                        'core_app_allow_select_group': True}"
+                            domain="[('category_id.is_from_CoreApp', '=', True)]"/>
+                    </group>
+                </sheet>
+                <chatter class="oe_chatter">
+                    <field name ="message_follower_ids"/>
+                    <field name ="message_ids"/>
+                </chatter>
+            </form>
+        </field>
+    </record>
+
+    <record id="core_role_action" model="ir.actions.act_window">
+        <field name="name">Role</field>
+        <field name="res_model">core.role</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>

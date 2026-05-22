@@ -1,0 +1,76 @@
+<odoo>
+  <!-- ========== LIST VIEW ========== -->
+  <record id="view_core_menu_list" model="ir.ui.view">
+    <field name="name">core.menu.list</field>
+    <field name="model">core.menu</field>
+    <field name="arch" type="xml">
+      <list string="Menus">
+        <header>
+                <button name="%(CoreApp.action_sync_hide_new_menus)d" 
+                        type="action" 
+                        string="Cập nhật Menu Odoo" 
+                        class="btn-primary" 
+                        display="always"/>
+          </header>
+        <field name="name"/>
+        <field name="parent_id"/>
+        <field name="sequence"/>
+        <field name="active"/>
+        <field name="ir_menu_id" optional="hide"/>
+      </list>
+    </field>
+  </record>
+
+  <!-- ========== FORM VIEW ========== -->
+  <record id="view_core_menu_form" model="ir.ui.view">
+    <field name="name">core.menu.form</field>
+    <field name="model">core.menu</field>
+    <field name="arch" type="xml">
+      <form string="Menu">
+        <sheet>
+          <group>
+            <group>
+              <field name="name"/>
+              <field name="sequence"/>
+              <field name="target_menu_id"  placeholder="Blank if have any child" domain="[('is_core_app_menu', '=', False)]"/>
+              <field name="show_ir_menu"/>
+              <field name="ir_menu_id" readonly="1" invisible="not show_ir_menu"/>
+              <field name="role_ids" widget="many2many_tags"/>
+              <field name="active"/>            
+            </group>
+            <group>
+              <field name="web_icon_data" widget="image" class="oe_avatar" options="{'size': [50, 50]}"/>
+            </group>
+          </group>
+
+          <notebook>
+            <page string="Submenus" name="submenus">
+              <field name="child_ids" context="{'default_parent_id': id}">
+                <list string="Menus">
+                  <field name="name"/>
+                  <field name="sequence"/>
+                  <field name="target_menu_id" domain="[('is_core_app_menu', '=', False)]"/>
+                  <field name="ir_menu_id" optional="hide"/>
+                </list>
+                <!-- form con sử dụng lại cùng form này -->
+              </field>
+            </page>
+          </notebook>
+        </sheet> 
+        <chatter class="oe_chatter">
+            <field name ="message_follower_ids"/>
+            <field name ="message_ids"/>
+        </chatter>
+      </form>
+    </field>
+  </record>
+
+  <!-- ========== ACTION ========== -->
+  <record id="action_core_menu" model="ir.actions.act_window">
+    <field name="name">Applications</field>
+    <field name="res_model">core.menu</field>
+    <field name="view_mode">list,form</field>
+    <field name="domain">[('parent_id', '=', False)]</field>
+  </record>
+
+</odoo>

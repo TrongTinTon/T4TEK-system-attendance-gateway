@@ -1,0 +1,32 @@
+version: "3.9"
+
+name: hr_np_payroll
+
+services:
+  web:
+    image: odoo:19.0
+    depends_on:
+      - db
+    ports:
+      - 8069:8069
+    volumes:
+      - odoo-web-data:/var/lib/odoo
+      - ./config:/etc/odoo
+      - ./extra-addons:/mnt/extra-addons
+    env_file:
+      - env/odoo.env
+
+    command: --
+  db:
+    image: postgres:15
+    ports:
+      - 5432:5432
+    env_file:
+      - env/postgresql.env
+    volumes:
+      - odoo-db-data:/var/lib/postgresql/data
+    restart: on-failure
+
+volumes:
+  odoo-web-data:
+  odoo-db-data:
