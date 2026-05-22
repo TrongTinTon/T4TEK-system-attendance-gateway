@@ -11,7 +11,10 @@
                 <field name="employee_id"/>
                 <field name="device_code"/>
                 <field name="controller_id"/>
-                <field name="attendance_direction"/>
+                <field name="device_check_type" optional="show"/>
+                <field name="device_direction" optional="show"/>
+                <field name="resolved_direction" optional="show"/>
+                <field name="direction_source" optional="show"/>
                 <field name="verify_method"/>
                 <field name="work_code"/>
                 <field name="sync_status"/>
@@ -50,6 +53,10 @@
                     </group>
                     <group>
                         <group string="Punch Detail">
+                            <field name="device_check_type" readonly="1"/>
+                            <field name="device_direction" readonly="1"/>
+                            <field name="resolved_direction" readonly="1"/>
+                            <field name="direction_source" readonly="1"/>
                             <field name="attendance_direction" readonly="1"/>
                             <field name="check_type" readonly="1"/>
                             <field name="verify_type" readonly="1"/>
@@ -92,6 +99,8 @@
                 <filter name="group_device" string="Device" context="{'group_by': 'device_code'}"/>
                 <filter name="group_employee" string="Employee" context="{'group_by': 'employee_id'}"/>
                 <filter name="group_method" string="Verify Method" context="{'group_by': 'verify_method'}"/>
+                <filter name="group_resolved_direction" string="Resolved Direction" context="{'group_by': 'resolved_direction'}"/>
+                <filter name="group_direction_source" string="Direction Source" context="{'group_by': 'direction_source'}"/>
                 <filter name="group_status" string="Sync Status" context="{'group_by': 'sync_status'}"/>
             </search>
         </field>

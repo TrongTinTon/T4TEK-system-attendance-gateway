@@ -58,6 +58,12 @@ class EntryControlController(models.Model):
         ("blocked", "Blocked"),
     ], string="Status", compute="_compute_counts", store=False)
     status_summary = fields.Char(string="Status Summary", compute="_compute_counts")
+    attendance_direction_mode = fields.Selection([
+        ("device", "Device Direction Only"),
+        ("software_inferred", "Software Inferred"),
+        ("hybrid", "Hybrid"),
+    ], string="Attendance Direction Mode", default="hybrid", required=True,
+       help="Controls how Attendance Logs are converted into HR Attendances. Device mode trusts ZKTeco AttState/InOutMode. Software Inferred mode ignores device direction and uses the employee's open attendance. Hybrid mode keeps explicit device Check-Out values but infers direction when the device sends Check-In Default/0.")
     company_id = fields.Many2one("res.company", default=lambda self: self.env.company)
 
     _sql_constraints = [

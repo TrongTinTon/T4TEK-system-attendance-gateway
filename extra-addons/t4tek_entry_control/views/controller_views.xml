@@ -12,6 +12,7 @@
                 <field name="controller_code"/>
                 <field name="name"/>
                 <field name="registration_status"/>
+                <field name="attendance_direction_mode" optional="show"/>
                 <field name="last_seen_at"/>
                 <field name="online_device_count" string="Online"/>
                 <field name="offline_device_count" string="Offline"/>
@@ -46,6 +47,7 @@
                             <field name="status_summary" readonly="1"/>
                             <field name="approved" readonly="1"/>
                             <field name="blocked" readonly="1"/>
+                            <field name="attendance_direction_mode"/>
                         </group>
                         <group>
                             <field name="last_seen_at" readonly="1"/>

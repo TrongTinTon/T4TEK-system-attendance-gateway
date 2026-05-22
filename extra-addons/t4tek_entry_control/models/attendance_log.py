@@ -26,7 +26,26 @@ class EntryControlAttendanceLog(models.Model):
     check_time_raw = fields.Char(string="Raw Check Time", readonly=True)
     check_time_timezone = fields.Char(string="Source Timezone", readonly=True)
 
+    # Device raw direction data is kept exactly for audit.
+    # device_check_type = raw value sent by the Controller/device.
+    # device_direction = direction mapped directly from device_check_type.
+    # resolved_direction = final direction used by hr.attendance.
+    # direction_source = how resolved_direction was decided.
     check_type = fields.Char(string="Check Type")
+    device_check_type = fields.Char(string="Device Check Type", index=True)
+    device_direction = fields.Selection([
+        ("in", "Check In"),
+        ("out", "Check Out"),
+    ], string="Device Direction", default="in", index=True)
+    resolved_direction = fields.Selection([
+        ("in", "Check In"),
+        ("out", "Check Out"),
+    ], string="Resolved Direction", default="in", index=True)
+    direction_source = fields.Selection([
+        ("device", "Device"),
+        ("software_inferred", "Software Inferred"),
+        ("hybrid", "Hybrid"),
+    ], string="Direction Source", default="device", index=True)
     attendance_direction = fields.Selection([
         ("in", "Check In"),
         ("out", "Check Out"),
@@ -133,8 +152,21 @@ class EntryControlAttendanceLog(models.Model):
         return self._parse_controller_datetime_info(value)["local"]
 
     @api.model
+    def _get_device_check_type(self, log):
+        return str(
+            log.get("check_type")
+            or log.get("checkType")
+            or log.get("att_state")
+            or log.get("attState")
+            or log.get("inout_mode")
+            or log.get("inOutMode")
+            or log.get("in_out_mode")
+            or ""
+        ).strip()
+
+    @api.model
     def _detect_attendance_direction(self, log):
-        raw = log.get("check_type") or log.get("checkType") or log.get("att_state") or log.get("attState") or log.get("inout_mode") or log.get("inOutMode") or log.get("in_out_mode") or ""
+        raw = self._get_device_check_type(log)
         text = str(raw or "").strip().lower().replace("-", "_").replace(" ", "_")
         if text in ("1", "out", "check_out", "checkout", "break_out", "ot_out", "clock_out", "exit"):
             return "out"
@@ -142,6 +174,52 @@ class EntryControlAttendanceLog(models.Model):
             # ZKTeco: 2=Break-Out, 5=OT-Out.
             return "out"
         return "in"
+
+    @api.model
+    def _infer_attendance_direction(self, employee, check_dt):
+        """Infer direction from the current HR Attendance state.
+
+        If the employee already has an open attendance before this punch, the
+        next punch is treated as Check Out. Otherwise it is treated as Check In.
+        This is used when devices always send ZKTeco AttState=0/Check-In Default.
+        """
+        if not employee or not check_dt:
+            return "in"
+        domain = [
+            ("employee_id", "=", employee.id),
+            ("check_out", "=", False),
+            ("check_in", "<=", check_dt),
+        ]
+        open_attendance = self.env["hr.attendance"].sudo().search(domain, order="check_in desc, id desc", limit=1)
+        return "out" if open_attendance else "in"
+
+    @api.model
+    def _get_attendance_direction_mode(self, controller):
+        mode = (controller.attendance_direction_mode if controller and "attendance_direction_mode" in controller._fields else "hybrid") or "hybrid"
+        if mode not in ("device", "software_inferred", "hybrid"):
+            mode = "hybrid"
+        return mode
+
+    @api.model
+    def _resolve_attendance_direction(self, controller, employee, check_dt, log, device_direction=None):
+        """Return (resolved_direction, direction_source).
+
+        - device: trust ZKTeco AttState/InOutMode.
+        - software_inferred: ignore device direction and infer from open HR Attendance.
+        - hybrid: explicit device Check-Out is trusted; device default/in values are
+          resolved by software inference so machines that always send 0 can still
+          produce Check In / Check Out pairs.
+        """
+        device_direction = device_direction or self._detect_attendance_direction(log)
+        mode = self._get_attendance_direction_mode(controller)
+        if mode == "device":
+            return device_direction, "device"
+        inferred = self._infer_attendance_direction(employee, check_dt)
+        if mode == "software_inferred":
+            return inferred, "software_inferred"
+        if device_direction == "out":
+            return "out", "device"
+        return inferred, "hybrid"
 
     @api.model
     def _detect_verify_method(self, log):
@@ -209,6 +287,15 @@ class EntryControlAttendanceLog(models.Model):
         ], limit=1) if device_code else self.env["entry.control.device"].browse()
         user = self.env["entry.control.user"].sudo().search([("pin", "=", pin)], limit=1)
         employee = user.employee_id if user and user.employee_id else self._find_employee_by_pin(pin)
+        device_check_type = self._get_device_check_type(log)
+        device_direction = self._detect_attendance_direction(log)
+        resolved_direction, direction_source = self._resolve_attendance_direction(
+            controller,
+            employee,
+            dt_info["utc"] or dt_info["local"],
+            log,
+            device_direction=device_direction,
+        )
         return {
             "controller_id": controller.id,
             "device_id": device.id if device else False,
@@ -220,8 +307,13 @@ class EntryControlAttendanceLog(models.Model):
             "check_time_utc": dt_info["utc"],
             "check_time_raw": dt_info["raw"],
             "check_time_timezone": dt_info["timezone"],
-            "check_type": str(log.get("check_type") or log.get("checkType") or log.get("att_state") or log.get("attState") or ""),
-            "attendance_direction": self._detect_attendance_direction(log),
+            "check_type": device_check_type,
+            "device_check_type": device_check_type,
+            "device_direction": device_direction,
+            "resolved_direction": resolved_direction,
+            "direction_source": direction_source,
+            # Backward-compatible field used by existing views/code.
+            "attendance_direction": resolved_direction,
             "verify_type": str(log.get("verify_type") or log.get("verifyType") or log.get("verify_mode") or log.get("verifyMode") or ""),
             "verify_method": self._detect_verify_method(log),
             "work_code": str(log.get("work_code") or log.get("workCode") or ""),
@@ -316,7 +408,7 @@ class EntryControlAttendanceLog(models.Model):
                     ("check_out", "=", False),
                 ], order="check_in desc, id desc", limit=1)
 
-                if rec.attendance_direction == "out":
+                if (rec.resolved_direction or rec.attendance_direction) == "out":
                     if not open_attendance:
                         raise ValueError(_("Cannot set check-out: Employee %s has no open attendance.") % rec.employee_id.display_name)
                     if open_attendance.check_in and check_dt < open_attendance.check_in:

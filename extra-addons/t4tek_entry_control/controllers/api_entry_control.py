@@ -744,6 +744,10 @@ class EntryControlAPI(http.Controller):
                         "employee_id": record.employee_id.id if record.employee_id else False,
                         "hr_attendance_id": record.hr_attendance_id.id if record.hr_attendance_id else False,
                         "sync_status": record.sync_status,
+                        "device_check_type": record.device_check_type or record.check_type or "",
+                        "device_direction": record.device_direction or "",
+                        "resolved_direction": record.resolved_direction or record.attendance_direction or "",
+                        "direction_source": record.direction_source or "",
                         "message": record.sync_error_message or record.sync_message or "",
                         "duplicate": bool(is_duplicate),
                     }
