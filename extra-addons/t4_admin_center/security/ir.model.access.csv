@@ -1,0 +1,7 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_fetchmail_server_t4_admin_center,fetchmail.server t4_admin_center,mail.model_fetchmail_server,t4_admin_center.group_admin_center,1,1,1,1
+access_ir_mail_server_t4_admin_center,ir.mail_server t4_admin_center,base.model_ir_mail_server,t4_admin_center.group_admin_center,1,1,1,1
+access_mail_template_t4_admin_center,mail.template t4_admin_center,mail.model_mail_template,t4_admin_center.group_admin_center,1,1,1,1
+access_res_partner_t4_admin_center,res.partner t4_admin_center,base.model_res_partner,t4_admin_center.group_admin_center,1,1,0,0
+access_res_company_t4_admin_center,res.company t4_admin_center,base.model_res_company,t4_admin_center.group_admin_center,1,1,0,0
+access_mail_message_t4_admin_center,mail.message t4_admin_center,mail.model_mail_message,t4_admin_center.group_admin_center,1,0,0,0

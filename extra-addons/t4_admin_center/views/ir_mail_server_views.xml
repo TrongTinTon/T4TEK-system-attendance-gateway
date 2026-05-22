@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <!-- ==========================================
+             ACTION: Máy chủ Mail Đi (Outgoing)
+             ========================================== -->
+        <record id="action_ir_mail_server_admin_center" model="ir.actions.act_window">
+            <field name="name">Máy Chủ Mail Đi</field>
+            <field name="res_model">ir.mail_server</field>
+            <field name="view_mode">list,form</field>
+            <field name="context">{
+                'default_name': 'Outgoing Mail Server',
+                'default_smtp_host': 'smtp.company.com',
+                'default_smtp_port': 465,
+                'default_smtp_encryption': 'ssl',
+            }</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    Chưa có máy chủ mail đi nào được cấu hình
+                </p>
+                <p>
+                    Thêm máy chủ SMTP để gửi email từ hệ thống Odoo.
+                </p>
+            </field>
+        </record>
+
+        <!-- ==========================================
+             LIST VIEW: Outgoing Mail Server
+             ========================================== -->
+        <record id="view_ir_mail_server_tree_admin_center" model="ir.ui.view">
+            <field name="name">ir.mail_server.list.admin_center</field>
+            <field name="model">ir.mail_server</field>
+            <field name="priority">1</field>
+            <field name="arch" type="xml">
+                <list string="Máy Chủ Mail Đi" default_order="sequence">
+                    <field name="sequence" widget="handle"/>
+                    <field name="name" string="Tên máy chủ"/>
+                    <field name="smtp_host" string="Địa chỉ SMTP"/>
+                    <field name="smtp_port" string="Cổng"/>
+                    <field name="smtp_encryption" string="Mã hóa"/>
+                    <field name="smtp_user" string="Tên đăng nhập"/>
+                    <field name="active" string="Kích hoạt" widget="boolean_toggle"/>
+                </list>
+            </field>
+        </record>
+
+        <!-- ==========================================
+             FORM VIEW: Outgoing Mail Server
+             ========================================== -->
+        <record id="view_ir_mail_server_form_admin_center" model="ir.ui.view">
+            <field name="name">ir.mail_server.form.admin_center</field>
+            <field name="model">ir.mail_server</field>
+            <field name="priority">1</field>
+            <field name="arch" type="xml">
+                <form string="Máy Chủ Mail Đi">
+                    <header>
+                        <button name="test_smtp_connection" string="Kiểm tra kết nối"
+                                type="object" class="btn-primary"/>
+                    </header>
+                    <sheet>
+                        <widget name="web_ribbon" title="Đã vô hiệu"
+                                bg_color="text-bg-danger"
+                                invisible="active == True"/>
+                        <div class="oe_title">
+                            <h1>
+                                <field name="name" placeholder="Tên máy chủ SMTP..."/>
+                            </h1>
+                        </div>
+                        <group>
+                            <group string="Thông Tin Kết Nối">
+                                <field name="smtp_host" placeholder="smtp.example.com" string="Địa chỉ SMTP"/>
+                                <field name="smtp_port" string="Cổng SMTP"/>
+                                <field name="smtp_encryption" string="Mã hóa kết nối"/>
+                            </group>
+                            <group string="Xác Thực">
+                                <field name="smtp_authentication" string="Phương thức xác thực"/>
+                                <field name="smtp_user" string="Tên đăng nhập"
+                                       invisible="smtp_authentication == 'certificate'"/>
+                                <field name="smtp_pass" string="Mật khẩu" password="True"
+                                       invisible="smtp_authentication == 'certificate'"/>
+                            </group>
+                        </group>
+                        <group string="Thông Tin Người Gửi">
+                            <group>
+                                <field name="from_filter" string="Email người gửi hợp lệ"/>
+                            </group>
+                            <group>
+                                <field name="sequence" string="Thứ tự ưu tiên"/>
+                                <field name="active" string="Kích hoạt"/>
+                            </group>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <record id="action_ir_mail_server_admin_center_view_list" model="ir.actions.act_window.view">
+            <field name="sequence" eval="10"/>
+            <field name="view_mode">list</field>
+            <field name="view_id" ref="view_ir_mail_server_tree_admin_center"/>
+            <field name="act_window_id" ref="action_ir_mail_server_admin_center"/>
+        </record>
+
+        <record id="action_ir_mail_server_admin_center_view_form" model="ir.actions.act_window.view">
+            <field name="sequence" eval="20"/>
+            <field name="view_mode">form</field>
+            <field name="view_id" ref="view_ir_mail_server_form_admin_center"/>
+            <field name="act_window_id" ref="action_ir_mail_server_admin_center"/>
+        </record>
+    </data>
+</odoo>

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!--
+            =============================================
+            GROUP: Admin Center / Quản trị viên
+            (No category_id in Odoo 19 - use prefixed name instead)
+            =============================================
+        -->
+        <record id="group_admin_center" model="res.groups">
+            <field name="name">Admin Center / Quản trị viên</field>
+            <field name="comment">Người dùng thuộc nhóm này có thể truy cập toàn bộ chức năng của Admin Center: quản lý Mail Server, Mail Template, cài đặt mail đối tác và thông tin công ty.</field>
+            <field name="implied_ids" eval="[
+                Command.link(ref('base.group_user')),
+                Command.link(ref('mail.group_mail_template_editor')),
+            ]"/>
+        </record>
+
+        <record id="mail_template_rule_admin_center" model="ir.rule">
+            <field name="name">Mail Template: Admin Center Full Access</field>
+            <field name="model_id" ref="mail.model_mail_template"/>
+            <field name="domain_force">[(1, '=', 1)]</field>
+            <field name="groups" eval="[Command.link(ref('t4_admin_center.group_admin_center'))]"/>
+            <field name="perm_read" eval="True"/>
+            <field name="perm_write" eval="True"/>
+            <field name="perm_create" eval="True"/>
+            <field name="perm_unlink" eval="True"/>
+        </record>
+
+    </data>
+</odoo>

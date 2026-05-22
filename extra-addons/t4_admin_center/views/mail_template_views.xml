@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <!-- ==========================================
+             ACTION: Mail Template
+             ========================================== -->
+        <record id="action_mail_template_admin_center" model="ir.actions.act_window">
+            <field name="name">Mẫu Email</field>
+            <field name="res_model">mail.template</field>
+            <field name="view_mode">list,form</field>
+            <field name="context">{}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    Chưa có mẫu email nào
+                </p>
+                <p>
+                    Tạo mẫu email để gửi tự động cho các sự kiện trong hệ thống.
+                </p>
+            </field>
+        </record>
+
+        <!-- ==========================================
+             LIST VIEW: Mail Template
+             ========================================== -->
+        <record id="view_mail_template_tree_admin_center" model="ir.ui.view">
+            <field name="name">mail.template.list.admin_center</field>
+            <field name="model">mail.template</field>
+            <field name="priority">1</field>
+            <field name="arch" type="xml">
+                <list string="Mẫu Email" default_order="name">
+                    <field name="name" string="Tên mẫu"/>
+                    <field name="model_id" string="Dùng cho đối tượng"/>
+                    <field name="description" string="Mô tả"/>
+                </list>
+            </field>
+        </record>
+
+        <!-- Archive action for mail.template list view -->
+        <record id="action_server_archive_mail_template" model="ir.actions.server">
+            <field name="name">Lưu trữ</field>
+            <field name="model_id" ref="mail.model_mail_template"/>
+            <field name="binding_model_id" ref="mail.model_mail_template"/>
+            <field name="binding_view_types">list</field>
+            <field name="state">code</field>
+            <field name="code">records.write({'active': False})</field>
+        </record>
+
+        <record id="action_server_unarchive_mail_template" model="ir.actions.server">
+            <field name="name">Bỏ lưu trữ</field>
+            <field name="model_id" ref="mail.model_mail_template"/>
+            <field name="binding_model_id" ref="mail.model_mail_template"/>
+            <field name="binding_view_types">list</field>
+            <field name="state">code</field>
+            <field name="code">records.write({'active': True})</field>
+        </record>
+
+        <!-- ==========================================
+             FORM VIEW: Mail Template
+             ========================================== -->
+        <record id="view_mail_template_form_admin_center" model="ir.ui.view">
+            <field name="name">mail.template.form.admin_center</field>
+            <field name="model">mail.template</field>
+            <field name="priority">1</field>
+            <field name="arch" type="xml">
+                <form string="Mẫu Email">
+                    <header>
+                        <button string="Xem trước"
+                                name="action_preview_template" type="object"
+                                class="btn-primary"/>
+                    </header>
+                    <sheet>
+                        <field name="can_write" invisible="1"/>
+                        <div class="oe_title">
+                            <h1>
+                                <field name="name" placeholder="Tên mẫu email..."/>
+                            </h1>
+                        </div>
+                        <group>
+                            <group string="Thông Tin Chung">
+                                <field name="model_id" string="Áp dụng cho"/>
+                                <field name="lang" string="Ngôn ngữ"/>
+                                <field name="active" string="Đang kích hoạt"/>
+                            </group>
+                            <group string="Người Gửi &amp; Người Nhận">
+                                <field name="email_from" string="Email người gửi"/>
+                                <field name="email_to" string="Gửi đến"/>
+                            </group>
+                        </group>
+                        <group string="Nội Dung Email">
+                            <field name="subject" string="Tiêu đề" colspan="2"
+                                   placeholder="Tiêu đề email (hỗ trợ biến động như {{object.name}})..."/>
+                        </group>
+                        <group string="Tệp Đính Kèm">
+                            <field name="attachment_ids" string="Tệp đính kèm" widget="many2many_binary" nolabel="1"/>
+                        </group>
+                        <notebook>
+                            <page string="Thiết kế" name="content">
+                                <div class="alert alert-info mt-2" role="alert">
+                                    <i class="fa fa-info-circle me-1"/>
+                                    <strong>Hướng dẫn nhanh:</strong>
+                                    <ul class="mb-0">
+                                        <li><strong>Chèn trường động:</strong>Vào vùng edit, gõ dấu <strong>/</strong> -> Chọn <strong>"Phần giữ chỗ động"</strong> -> Chọn trường cần chèn.</li>
+                                    </ul>
+                                </div>
+                                <field name="body_html" widget="html_mail" class="oe-bordered-editor"
+                                       options="{'codeview': true, 'dynamic_placeholder': true}"
+                                       readonly="not can_write and id" nolabel="1"/>
+                            </page>
+                            <page string="Mã nguồn (HTML)" name="source_code">
+                                <field name="body_html" widget="ace" options="{'mode': 'html'}" string="Mã nguồn HTML" nolabel="1"/>
+                            </page>
+                            <page string="Cài Đặt">
+                                <group>
+                                    <group>
+                                        <field name="mail_server_id" string="Máy chủ gửi mail"/>
+                                        <field name="scheduled_date" string="Ngày gửi hẹn giờ"/>
+                                        <field name="auto_delete" string="Tự xóa sau khi gửi"/>
+                                    </group>
+                                </group>
+                            </page>
+                        </notebook>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- ==========================================
+             SEARCH VIEW: Mail Template
+             ========================================== -->
+        <record id="view_mail_template_search_admin_center" model="ir.ui.view">
+            <field name="name">mail.template.search.admin_center</field>
+            <field name="model">mail.template</field>
+            <field name="priority">20</field>
+            <field name="arch" type="xml">
+                <search string="Tìm kiếm Mẫu Email">
+                    <field name="name" string="Tên mẫu"/>
+                    <field name="model_id" string="Đối tượng"/>
+                </search>
+            </field>
+        </record>
+
+        <record id="action_mail_template_admin_center_view_list" model="ir.actions.act_window.view">
+            <field name="sequence" eval="10"/>
+            <field name="view_mode">list</field>
+            <field name="view_id" ref="view_mail_template_tree_admin_center"/>
+            <field name="act_window_id" ref="action_mail_template_admin_center"/>
+        </record>
+
+        <record id="action_mail_template_admin_center_view_form" model="ir.actions.act_window.view">
+            <field name="sequence" eval="20"/>
+            <field name="view_mode">form</field>
+            <field name="view_id" ref="view_mail_template_form_admin_center"/>
+            <field name="act_window_id" ref="action_mail_template_admin_center"/>
+        </record>
+    </data>
+</odoo>

@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <!-- ==========================================
+             ACTION: Dashboard (trang chủ App)
+             ========================================== -->
+        <menuitem
+            id="menu_admin_center_root"
+            name="Admin Center"
+            web_icon="t4_admin_center,static/description/icon.png"
+            action="t4_admin_center.action_fetchmail_server_admin_center"
+            groups="t4_admin_center.group_admin_center"
+            sequence="1"/>
+
+        <!-- ==========================================
+             MENU CHA: Cấu hình Mail
+             ========================================== -->
+        <menuitem
+            id="menu_admin_center_mail"
+            name="Cấu hình Mail"
+            parent="menu_admin_center_root"
+            groups="t4_admin_center.group_admin_center"
+            sequence="10"/>
+
+        <menuitem
+            id="menu_admin_center_outgoing_mail"
+            name="Máy Chủ Mail Đi"
+            parent="menu_admin_center_mail"
+            action="t4_admin_center.action_ir_mail_server_admin_center"
+            groups="t4_admin_center.group_admin_center"
+            sequence="20"/>
+
+        <menuitem
+            id="menu_admin_center_mail_template"
+            name="Mẫu Email"
+            parent="menu_admin_center_mail"
+            action="t4_admin_center.action_mail_template_admin_center"
+            groups="t4_admin_center.group_admin_center"
+            sequence="30"/>
+
+        <!-- ==========================================
+             MENU CHA: Thông Tin Công Ty
+             ========================================== -->
+        <menuitem
+            id="menu_admin_center_company"
+            name="Thông Tin Công Ty"
+            parent="menu_admin_center_root"
+            groups="t4_admin_center.group_admin_center"
+            sequence="20"/>
+
+        <menuitem
+            id="menu_admin_center_edit_company"
+            name="Chỉnh Sửa Công Ty"
+            parent="menu_admin_center_company"
+            action="t4_admin_center.action_res_company_admin_center"
+            groups="t4_admin_center.group_admin_center"
+            sequence="10"/>
+
+    </data>
+</odoo>

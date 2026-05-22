@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <!-- ==========================================
+             SEARCH VIEW: Mail Message Incoming
+             ========================================== -->
+        <record id="view_mail_message_incoming_search_admin_center" model="ir.ui.view">
+            <field name="name">mail.message.search.incoming.admin_center</field>
+            <field name="model">mail.message</field>
+            <field name="arch" type="xml">
+                <search string="Tìm kiếm Mail Đã Nhận">
+                    <field name="subject" string="Chủ đề"/>
+                    <field name="email_from" string="Người gửi"/>
+                    <field name="model" string="Model liên quan"/>
+                    <field name="author_id" string="Tác giả"/>
+                    <separator/>
+                    <filter string="Email nhận vào" name="incoming"
+                            domain="[('message_type', '=', 'email')]"/>
+                    <separator/>
+                    <filter string="Hôm nay" name="today"
+                            domain="[('date', '&gt;=', (context_today()).strftime('%Y-%m-%d'))]"/>
+                    <filter string="7 ngày qua" name="last_7_days"
+                            domain="[('date', '&gt;=', (context_today() - datetime.timedelta(days=7)).strftime('%Y-%m-%d'))]"/>
+                    <filter string="30 ngày qua" name="last_30_days"
+                            domain="[('date', '&gt;=', (context_today() - datetime.timedelta(days=30)).strftime('%Y-%m-%d'))]"/>
+                    <separator/>
+                    <group>
+                        <filter string="Người gửi" name="group_by_from"
+                                context="{'group_by': 'email_from'}"/>
+                        <filter string="Ngày" name="group_by_date"
+                                context="{'group_by': 'date:day'}"/>
+                        <filter string="Model" name="group_by_model"
+                                context="{'group_by': 'model'}"/>
+                    </group>
+                </search>
+            </field>
+        </record>
+
+        <!-- ==========================================
+             LIST VIEW: Mail Message Incoming
+             ========================================== -->
+        <record id="view_mail_message_incoming_tree_admin_center" model="ir.ui.view">
+            <field name="name">mail.message.list.incoming.admin_center</field>
+            <field name="model">mail.message</field>
+            <field name="arch" type="xml">
+                <list string="Mail Đã Nhận" create="false" edit="false"
+                      delete="false" default_order="date desc">
+                    <field name="date" string="Ngày nhận" width="160px"/>
+                    <field name="email_from" string="Người gửi"/>
+                    <field name="subject" string="Chủ đề"/>
+                    <field name="model" string="Model" optional="show"/>
+                    <field name="res_id" string="Record ID" optional="hide"/>
+                    <field name="author_id" string="Đối tác" optional="show"/>
+                    <field name="message_type" string="Loại" optional="hide"/>
+                </list>
+            </field>
+        </record>
+
+        <!-- ==========================================
+             FORM VIEW: Mail Message Incoming (readonly)
+             ========================================== -->
+        <record id="view_mail_message_incoming_form_admin_center" model="ir.ui.view">
+            <field name="name">mail.message.form.incoming.admin_center</field>
+            <field name="model">mail.message</field>
+            <field name="arch" type="xml">
+                <form string="Chi Tiết Email" create="false" edit="false" delete="false">
+                    <sheet>
+                        <group>
+                            <group string="Thông Tin Email">
+                                <field name="date" string="Ngày nhận"/>
+                                <field name="email_from" string="Người gửi"/>
+                                <field name="subject" string="Chủ đề"/>
+                                <field name="message_type" string="Loại message"/>
+                            </group>
+                            <group string="Liên Kết Record">
+                                <field name="model" string="Model"/>
+                                <field name="res_id" string="Record ID"/>
+                                <field name="author_id" string="Đối tác"/>
+                                <field name="record_name" string="Tên record"/>
+                            </group>
+                        </group>
+                        <notebook>
+                            <page string="Nội Dung" name="content">
+                                <field name="body" string="Nội dung email" readonly="1"/>
+                            </page>
+                            <page string="Thông Tin Kỹ Thuật" name="technical">
+                                <group>
+                                    <field name="message_id" string="Message-ID"/>
+                                    <field name="reply_to" string="Reply-To"/>
+                                </group>
+                            </page>
+                        </notebook>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- ==========================================
+             ACTION: Mail Đã Nhận (Incoming Messages)
+             ========================================== -->
+        <record id="action_mail_message_incoming_admin_center" model="ir.actions.act_window">
+            <field name="name">Mail Đã Nhận</field>
+            <field name="res_model">mail.message</field>
+            <field name="view_mode">list,form</field>
+            <field name="domain">[('message_type', '=', 'email')]</field>
+            <field name="context">{}</field>
+            <field name="search_view_id" ref="view_mail_message_incoming_search_admin_center"/>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    Chưa có email nào được nhận
+                </p>
+                <p>
+                    Cấu hình Máy chủ Mail Đến để bắt đầu nhận email vào hệ thống.
+                </p>
+            </field>
+        </record>
+
+        <!-- Liên kết view với action -->
+        <record id="action_mail_message_incoming_admin_center_view_list" model="ir.actions.act_window.view">
+            <field name="sequence" eval="10"/>
+            <field name="view_mode">list</field>
+            <field name="view_id" ref="view_mail_message_incoming_tree_admin_center"/>
+            <field name="act_window_id" ref="action_mail_message_incoming_admin_center"/>
+        </record>
+
+        <record id="action_mail_message_incoming_admin_center_view_form" model="ir.actions.act_window.view">
+            <field name="sequence" eval="20"/>
+            <field name="view_mode">form</field>
+            <field name="view_id" ref="view_mail_message_incoming_form_admin_center"/>
+            <field name="act_window_id" ref="action_mail_message_incoming_admin_center"/>
+        </record>
+
+    </data>
+</odoo>
