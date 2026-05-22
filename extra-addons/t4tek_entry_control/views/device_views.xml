@@ -4,17 +4,22 @@
         <field name="name">entry.control.device.list</field>
         <field name="model">entry.control.device</field>
         <field name="arch" type="xml">
-            <list string="Devices" create="1" edit="1">
+            <list string="Devices" create="1" edit="1"
+                  decoration-success="operational_state == 'online'"
+                  decoration-warning="operational_state == 'offline'"
+                  decoration-danger="operational_state == 'error'"
+                  decoration-muted="operational_state == 'inactive'">
+                <field name="operational_state" widget="badge"/>
                 <field name="device_code"/>
                 <field name="name"/>
                 <field name="controller_id"/>
                 <field name="ip_address"/>
                 <field name="port"/>
                 <field name="machine_no"/>
-                <field name="is_online"/>
                 <field name="last_seen_at"/>
-                <field name="assignment_count" string="Auto Users"/>
-                <field name="last_error"/>
+                <field name="last_attendance_pull_at"/>
+                <field name="last_fingerprint_pull_at"/>
+                <field name="status_summary"/>
             </list>
         </field>
     </record>
@@ -24,22 +29,35 @@
         <field name="arch" type="xml">
             <form string="Device">
                 <sheet>
-                    <group>
+                    <div class="oe_title">
+                        <h1><field name="name" placeholder="Device name"/></h1>
+                        <h3><field name="device_code" readonly="1"/></h3>
+                    </div>
+                    <group string="Trạng thái thiết bị">
                         <group>
+                            <field name="operational_state" widget="badge" readonly="1"/>
+                            <field name="status_summary" readonly="1"/>
                             <field name="active"/>
+                            <field name="is_online" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="last_seen_at" readonly="1"/>
+                            <field name="last_online_at" readonly="1"/>
+                            <field name="last_offline_at" readonly="1"/>
+                            <field name="last_diagnostic_at" readonly="1"/>
+                        </group>
+                    </group>
+                    <group string="Kết nối">
+                        <group>
                             <field name="controller_id"/>
-                            <field name="device_code"/>
-                            <field name="name"/>
-                            <field name="device_name"/>
                             <field name="device_type"/>
+                            <field name="device_name" readonly="1"/>
                         </group>
                         <group>
                             <field name="ip_address"/>
                             <field name="port"/>
                             <field name="machine_no"/>
                             <field name="comm_mode"/>
-                            <field name="is_online" readonly="1"/>
-                            <field name="assignment_count" readonly="1" string="Auto Sync Users"/>
                         </group>
                     </group>
                     <notebook>
@@ -48,19 +66,18 @@
                                 <field name="serial_number"/>
                                 <field name="model"/>
                                 <field name="firmware_version"/>
+                                <field name="assignment_count" readonly="1" string="Auto Sync Users"/>
                             </group>
                         </page>
-                        <page string="Status">
+                        <page string="Sync Times">
                             <group>
-                                <field name="last_seen_at" readonly="1"/>
-                                <field name="last_online_at" readonly="1"/>
-                                <field name="last_offline_at" readonly="1"/>
-                                <field name="last_diagnostic_at" readonly="1"/>
                                 <field name="last_user_pull_at" readonly="1"/>
                                 <field name="last_attendance_pull_at" readonly="1"/>
                                 <field name="last_fingerprint_pull_at" readonly="1"/>
-                                <field name="last_error" readonly="1"/>
                             </group>
+                        </page>
+                        <page string="Lỗi gần nhất">
+                            <field name="last_error" readonly="1" nolabel="1"/>
                         </page>
                     </notebook>
                 </sheet>
@@ -78,6 +95,7 @@
                 <filter name="active" string="Active" domain="[('active','=',True)]"/>
                 <filter name="online" string="Online" domain="[('is_online','=',True)]"/>
                 <filter name="offline" string="Offline" domain="[('is_online','=',False)]"/>
+                <filter name="has_error" string="Has Error" domain="[('last_error','!=',False)]"/>
             </search>
         </field>
     </record>

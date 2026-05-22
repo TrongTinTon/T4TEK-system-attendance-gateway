@@ -35,11 +35,35 @@ class EntryControlDevice(models.Model):
     last_attendance_pull_at = fields.Datetime(readonly=True)
     last_fingerprint_pull_at = fields.Datetime(readonly=True)
     last_error = fields.Text(readonly=True)
+    operational_state = fields.Selection([
+        ("online", "Online"),
+        ("offline", "Offline"),
+        ("error", "Error"),
+        ("inactive", "Inactive"),
+    ], string="Status", compute="_compute_operational_state", store=False)
+    status_summary = fields.Char(string="Status Summary", compute="_compute_operational_state")
     assignment_count = fields.Integer(compute="_compute_assignment_count")
 
     _sql_constraints = [
         ("device_code_controller_unique", "unique(controller_id, device_code)", "Device code must be unique per controller."),
     ]
+
+
+    @api.depends("active", "is_online", "last_error", "last_seen_at")
+    def _compute_operational_state(self):
+        for rec in self:
+            if not rec.active:
+                rec.operational_state = "inactive"
+                rec.status_summary = _("Inactive")
+            elif rec.last_error:
+                rec.operational_state = "error"
+                rec.status_summary = rec.last_error
+            elif rec.is_online:
+                rec.operational_state = "online"
+                rec.status_summary = _("Online")
+            else:
+                rec.operational_state = "offline"
+                rec.status_summary = _("Offline")
 
     @api.depends("device_code")
     def _compute_assignment_count(self):

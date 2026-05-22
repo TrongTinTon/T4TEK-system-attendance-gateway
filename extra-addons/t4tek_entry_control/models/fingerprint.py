@@ -226,9 +226,9 @@ class EntryControlFingerprint(models.Model):
                 "status": "pending_review",
                 "note": "Device sent a different fingerprint template. Review and approve on server before replacing master.",
             })
-            self.env["entry.control.conflict"].sudo().with_context(
-                force_conflict_type="fingerprint_mismatch_on_device"
-            ).ingest_from_event(event)
+            # Conflict model was removed from the operating workflow. Keep the
+            # pending template on the fingerprint master itself; operator review
+            # happens directly on this record.
             # Restore the server master to the device that reported a different hash.
             if source_device:
                 rec.queue_push_to_devices(only_device=source_device)

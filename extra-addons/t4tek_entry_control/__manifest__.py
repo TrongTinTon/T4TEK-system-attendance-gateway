@@ -18,14 +18,14 @@ Main capabilities:
 - OWL fingerprint map widget on Device User forms to visualize 10-finger enrollment status without exposing raw template data.
 
 Designed workflow:
-1. Controller requests /api/entry_control/v1/auth/token.
+1. Controller authenticates with an Odoo account at /api/entry_control/v1/auth/token and receives access/refresh tokens.
 2. Controller calls /api/entry_control/v1/hello with token for heartbeat/check-in.
 3. Controller uploads harvested fingerprints to /api/entry_control/v1/sync/fingerprints/upload.
 4. Controller pulls /api/entry_control/v1/sync/manifest for desired-state deltas.
 5. Controller pulls /api/entry_control/v1/sync/fingerprints only when fingerprint hashes changed.
 6. Controller computes local device jobs and synchronizes users/fingerprints to ZKTeco devices.
 """,
-    "version": '19.0.17.0',
+    "version": '19.0.18.0',
     "category": 'Human Resources/Attendances',
     "author": 'T4TEK',
     "maintainer": 'T4TEK',

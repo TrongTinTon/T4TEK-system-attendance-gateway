@@ -67,7 +67,6 @@
                     </group>
                     <notebook>
                         <page string="Raw Data">
-                            <field name="raw_data" readonly="1"/>
                         </page>
                     </notebook>
                 </sheet>

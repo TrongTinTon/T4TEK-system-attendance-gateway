@@ -26,10 +26,15 @@ class EntryControlController(models.Model):
     ], default="approved", required=True, index=True)
     approved = fields.Boolean(default=True, index=True)
     blocked = fields.Boolean(default=False, index=True)
-    token_hash = fields.Char(copy=False, readonly=True)
-    token_hint = fields.Char(copy=False, readonly=True)
+    token_hash = fields.Char(string="Access Token Hash", copy=False, readonly=True)
+    token_hint = fields.Char(string="Access Token", copy=False, readonly=True)
     token_issued_at = fields.Datetime(copy=False, readonly=True)
     token_expires_at = fields.Datetime(copy=False, readonly=True)
+    refresh_token_hash = fields.Char(string="Refresh Token Hash", copy=False, readonly=True)
+    refresh_token_hint = fields.Char(string="Refresh Token", copy=False, readonly=True)
+    refresh_token_issued_at = fields.Datetime(copy=False, readonly=True)
+    refresh_token_expires_at = fields.Datetime(copy=False, readonly=True)
+    auth_user_id = fields.Many2one("res.users", string="Authenticated Odoo User", readonly=True, copy=False)
     last_login_at = fields.Datetime(readonly=True)
     last_auth_at = fields.Datetime(readonly=True)
     last_seen_at = fields.Datetime(readonly=True)
@@ -42,19 +47,44 @@ class EntryControlController(models.Model):
     local_ip = fields.Char(readonly=True)
     last_error = fields.Text(readonly=True)
     device_count = fields.Integer(compute="_compute_counts")
+    online_device_count = fields.Integer(string="Online Devices", compute="_compute_counts")
+    offline_device_count = fields.Integer(string="Offline Devices", compute="_compute_counts")
+    error_device_count = fields.Integer(string="Devices With Error", compute="_compute_counts")
     pending_command_count = fields.Integer(string="Pending Commands (deprecated)", compute="_compute_counts")
+    operational_state = fields.Selection([
+        ("online", "Online"),
+        ("warning", "Warning"),
+        ("offline", "Offline"),
+        ("blocked", "Blocked"),
+    ], string="Status", compute="_compute_counts", store=False)
+    status_summary = fields.Char(string="Status Summary", compute="_compute_counts")
     company_id = fields.Many2one("res.company", default=lambda self: self.env.company)
 
     _sql_constraints = [
         ("controller_code_unique", "unique(controller_code)", "Controller code must be unique."),
     ]
 
-    @api.depends("controller_code")
+    @api.depends("controller_code", "blocked", "approved", "registration_status", "last_seen_at", "last_error")
     def _compute_counts(self):
         Device = self.env["entry.control.device"].sudo()
+        now = fields.Datetime.now()
+        offline_after = int(self.env["ir.config_parameter"].sudo().get_param("entry_control.controller_offline_after_seconds", "300") or 300)
         for rec in self:
-            rec.device_count = Device.search_count([("controller_id", "=", rec.id), ("active", "=", True)])
+            devices = Device.search([("controller_id", "=", rec.id), ("active", "=", True)])
+            rec.device_count = len(devices)
+            rec.online_device_count = len(devices.filtered(lambda d: d.is_online))
+            rec.offline_device_count = max(0, rec.device_count - rec.online_device_count)
+            rec.error_device_count = len(devices.filtered(lambda d: bool(d.last_error)))
             rec.pending_command_count = 0
+            if rec.blocked or rec.registration_status == "blocked" or not rec.approved:
+                rec.operational_state = "blocked"
+            elif rec.last_error or rec.error_device_count:
+                rec.operational_state = "warning"
+            elif rec.last_seen_at and (now - rec.last_seen_at).total_seconds() <= offline_after:
+                rec.operational_state = "online"
+            else:
+                rec.operational_state = "offline"
+            rec.status_summary = _("%s/%s devices online, %s errors") % (rec.online_device_count, rec.device_count, rec.error_device_count)
 
     @api.model
     def _hash_token(self, token):
@@ -69,31 +99,70 @@ class EntryControlController(models.Model):
         self.ensure_one()
         return bool(token and self.token_hash and self._hash_token(token) == self.token_hash)
 
-    def issue_runtime_token(self):
-        """Issue a runtime token for the Controller API client.
+    def check_refresh_token(self, token):
+        self.ensure_one()
+        return bool(token and self.refresh_token_hash and self._hash_token(token) == self.refresh_token_hash)
 
-        The token is returned only in this API response. Odoo stores only
-        SHA256(token). The Controller does not need any token configured
-        manually; it asks /api/entry_control/v1/auth/token after approval.
-        """
+    def _access_token_ttl_seconds(self):
+        return max(300, int(self.env["ir.config_parameter"].sudo().get_param("entry_control.controller_access_token_ttl_seconds", "3600") or 3600))
+
+    def _refresh_token_ttl_seconds(self):
+        return max(3600, int(self.env["ir.config_parameter"].sudo().get_param("entry_control.controller_refresh_token_ttl_seconds", "2592000") or 2592000))
+
+    def _token_hint(self, token):
+        return "%s...%s" % (token[:8], token[-6:]) if token else ""
+
+    def _ensure_can_authenticate(self):
         self.ensure_one()
         if self.blocked or self.registration_status == "blocked" or not self.approved:
             raise UserError(_("Controller is blocked or not approved."))
-        token = self._new_token()
+
+    def issue_runtime_tokens(self, auth_user=None, rotate_refresh=True):
+        """Issue access/refresh tokens after Odoo account authentication.
+
+        The clear tokens are returned only in the API response. Odoo stores only
+        SHA256 hashes. Operational APIs use the short-lived access token; the
+        Controller can call /auth/refresh with the refresh token before it expires.
+        """
+        self.ensure_one()
+        self._ensure_can_authenticate()
         now = fields.Datetime.now()
-        ttl = int(self.env["ir.config_parameter"].sudo().get_param("entry_control.controller_token_ttl_seconds", "3600") or 3600)
-        expires_at = now + timedelta(seconds=max(300, ttl))
-        self.sudo().write({
-            "token_hash": self._hash_token(token),
-            "token_hint": "%s...%s" % (token[:8], token[-6:]),
+        access_token = self._new_token()
+        access_expires_at = now + timedelta(seconds=self._access_token_ttl_seconds())
+        vals = {
+            "token_hash": self._hash_token(access_token),
+            "token_hint": self._token_hint(access_token),
             "token_issued_at": now,
-            "token_expires_at": expires_at,
+            "token_expires_at": access_expires_at,
             "last_login_at": now,
             "last_auth_at": now,
             "last_seen_at": now,
             "last_error": False,
-        })
-        return token
+        }
+        refresh_token = False
+        refresh_expires_at = self.refresh_token_expires_at
+        if rotate_refresh or not self.refresh_token_hash:
+            refresh_token = self._new_token()
+            refresh_expires_at = now + timedelta(seconds=self._refresh_token_ttl_seconds())
+            vals.update({
+                "refresh_token_hash": self._hash_token(refresh_token),
+                "refresh_token_hint": self._token_hint(refresh_token),
+                "refresh_token_issued_at": now,
+                "refresh_token_expires_at": refresh_expires_at,
+            })
+        if auth_user:
+            vals["auth_user_id"] = auth_user.id
+        self.sudo().write(vals)
+        return {
+            "access_token": access_token,
+            "access_expires_at": access_expires_at,
+            "refresh_token": refresh_token,
+            "refresh_expires_at": refresh_expires_at,
+        }
+
+    def issue_runtime_token(self):
+        """Backward-compatible helper for older callers."""
+        return self.issue_runtime_tokens(rotate_refresh=False)["access_token"]
 
     def action_approve(self):
         # Backward-compatible alias.  The current workflow auto-approves from
@@ -110,6 +179,10 @@ class EntryControlController(models.Model):
                 "token_hint": False,
                 "token_issued_at": False,
                 "token_expires_at": False,
+                "refresh_token_hash": False,
+                "refresh_token_hint": False,
+                "refresh_token_issued_at": False,
+                "refresh_token_expires_at": False,
                 "last_error": _("Controller blocked by administrator."),
             })
         return True
@@ -137,7 +210,17 @@ class EntryControlController(models.Model):
         self.ensure_one()
         if self.blocked or not self.approved or self.registration_status != "approved":
             raise UserError(_("Unblock/activate the controller before resetting the runtime token."))
-        self.write({"token_hash": False, "token_hint": False, "token_issued_at": False, "token_expires_at": False, "last_auth_at": False})
+        self.write({
+            "token_hash": False,
+            "token_hint": False,
+            "token_issued_at": False,
+            "token_expires_at": False,
+            "refresh_token_hash": False,
+            "refresh_token_hint": False,
+            "refresh_token_issued_at": False,
+            "refresh_token_expires_at": False,
+            "last_auth_at": False,
+        })
         return {
             "type": "ir.actions.client",
             "tag": "display_notification",

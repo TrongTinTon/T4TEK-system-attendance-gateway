@@ -47,7 +47,6 @@ class EntryControlAttendanceLog(models.Model):
     verify_method_label = fields.Char(string="Verify Method Label", compute="_compute_verify_method_label", store=True)
     work_code = fields.Char()
 
-    raw_data = fields.Json(default=dict)
     event_hash = fields.Char(required=True, index=True, copy=False)
 
     hr_attendance_id = fields.Many2one("hr.attendance", string="HR Attendance", ondelete="set null", readonly=True, index=True)
@@ -210,7 +209,6 @@ class EntryControlAttendanceLog(models.Model):
         ], limit=1) if device_code else self.env["entry.control.device"].browse()
         user = self.env["entry.control.user"].sudo().search([("pin", "=", pin)], limit=1)
         employee = user.employee_id if user and user.employee_id else self._find_employee_by_pin(pin)
-        raw = log.get("raw_data") or log.get("rawData") or log
         return {
             "controller_id": controller.id,
             "device_id": device.id if device else False,
@@ -227,7 +225,6 @@ class EntryControlAttendanceLog(models.Model):
             "verify_type": str(log.get("verify_type") or log.get("verifyType") or log.get("verify_mode") or log.get("verifyMode") or ""),
             "verify_method": self._detect_verify_method(log),
             "work_code": str(log.get("work_code") or log.get("workCode") or ""),
-            "raw_data": raw if isinstance(raw, dict) else {"raw": raw},
             "event_hash": event_hash,
             "sync_status": "received",
             "sync_message": False,

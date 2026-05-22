@@ -156,13 +156,18 @@ class EntryControlUser(models.Model):
         return 0
 
     def action_open_generate_from_employees(self):
+        # Manual generation was removed. Device Users are created automatically
+        # from Employee PIN by the employee integration. Keep this method as a
+        # safe no-op for older menus/buttons that may still call it after upgrade.
         return {
-            "type": "ir.actions.act_window",
-            "name": _("Generate Device Users from Employees"),
-            "res_model": "entry.control.generate.users.wizard",
-            "view_mode": "form",
-            "target": "new",
-            "context": dict(self.env.context or {}),
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "title": _("Device Users"),
+                "message": _("Manual generation from Employees was removed. Device Users are created automatically from Employee PIN."),
+                "type": "info",
+                "sticky": False,
+            },
         }
 
     def action_queue_full_create_log(self):

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from dateutil import parser as date_parser
 from odoo import fields, http
+from odoo.exceptions import AccessDenied
 from odoo.http import Response, request
 
 
@@ -243,48 +244,135 @@ class EntryControlAPI(http.Controller):
     # ------------------------------------------------------------------
     # Controller lifecycle
     # ------------------------------------------------------------------
+    def _authenticate_odoo_user(self, data):
+        login = (data.get("odoo_login") or data.get("odooLogin") or data.get("login") or data.get("username") or data.get("email") or "").strip()
+        password = data.get("odoo_password") or data.get("odooPassword") or data.get("password") or ""
+        if not login or not password:
+            raise ValueError("odoo_login and odoo_password are required")
+        db = request.httprequest.args.get("db") or request.httprequest.headers.get("X-Odoo-Database") or data.get("odoo_database") or data.get("db") or request.db
+        if not db:
+            raise ValueError("Odoo database is required")
+        credentials = {"login": login, "password": password, "type": "password"}
+
+        # Odoo 19 changed the HTTP session authenticate signature.
+        # It is NOT authenticate(db, login, password) and also NOT authenticate(db, credentials).
+        # In Odoo 19 it is authenticate(env, credentials), where env must be an Odoo Environment
+        # callable. Passing the database name string causes: "'str' object is not callable".
+        current_db = request.env.cr.dbname if request.env and request.env.cr else request.db
+        if db and current_db and db != current_db:
+            raise ValueError("Selected Odoo database mismatch: request db=%s, payload db=%s" % (current_db, db))
+        try:
+            auth_result = request.session.authenticate(request.env, credentials)
+        except AccessDenied:
+            raise ValueError("Invalid Odoo login or password")
+        except TypeError as exc:
+            raise ValueError("Odoo authenticate API mismatch: %s" % exc)
+
+        uid = request.session.uid
+        if not uid:
+            if isinstance(auth_result, dict):
+                uid = auth_result.get("uid") or auth_result.get("user_id")
+            elif isinstance(auth_result, int):
+                uid = auth_result
+        if not uid:
+            raise ValueError("Invalid Odoo login or password")
+        user = request.env["res.users"].sudo().browse(int(uid)).exists()
+        if not user:
+            raise ValueError("Authenticated Odoo user no longer exists")
+        try:
+            allowed = user.has_group("t4tek_entry_control.group_entry_control_manager") or user.has_group("base.group_system")
+        except Exception:
+            allowed = bool(user.id == 1)
+        if not allowed:
+            raise ValueError("Odoo user is not allowed to issue Entry Control controller tokens")
+        return user
+
+    def _auth_token_payload(self, controller, tokens):
+        access_expires_at = tokens.get("access_expires_at") or controller.token_expires_at
+        refresh_expires_at = tokens.get("refresh_expires_at") or controller.refresh_token_expires_at
+        now = fields.Datetime.now()
+        try:
+            expires_in = max(1, int((access_expires_at - now).total_seconds())) if access_expires_at else 3600
+        except Exception:
+            expires_in = 3600
+        try:
+            refresh_expires_in = max(1, int((refresh_expires_at - now).total_seconds())) if refresh_expires_at else 2592000
+        except Exception:
+            refresh_expires_in = 2592000
+        return {
+            "ok": True,
+            "status": "success",
+            "controller_code": controller.controller_code,
+            "controller_id": controller.id,
+            "approved": bool(controller.approved),
+            "blocked": bool(controller.blocked),
+            "registration_status": controller.registration_status,
+            "access_token": tokens.get("access_token"),
+            "refresh_token": tokens.get("refresh_token"),
+            "token_type": "Bearer",
+            "expires_in": expires_in,
+            "expires_at": fields.Datetime.to_string(access_expires_at) if access_expires_at else "",
+            "refresh_expires_in": refresh_expires_in,
+            "refresh_expires_at": fields.Datetime.to_string(refresh_expires_at) if refresh_expires_at else "",
+            "token_hint": controller.token_hint or "",
+            "refresh_token_hint": controller.refresh_token_hint or "",
+            "auth_user_id": controller.auth_user_id.id if controller.auth_user_id else False,
+            "auth_user_login": controller.auth_user_id.login if controller.auth_user_id else "",
+            "server_time": fields.Datetime.to_string(now),
+        }
+
     @http.route("/api/entry_control/v1/auth/token", type="http", auth="public", methods=["POST"], csrf=False)
     def v1_auth_token(self, **kwargs):
+        """Authenticate the Controller with a real Odoo account, then issue tokens.
+
+        Required payload: controller_code, odoo_login, odoo_password.
+        This replaces the old controller-code-only token bootstrap.
+        """
         try:
             data = self._read_json_body()
+            auth_user = self._authenticate_odoo_user(data)
             code = self._get_controller_code(data)
             if not code:
                 return self._json_response({"ok": False, "error": "controller_code is required"}, 400)
             payload = dict(data)
             payload["controller_code"] = code
             payload.setdefault("controller_name", data.get("controllerName") or data.get("name") or code)
+            payload.pop("odoo_password", None)
+            payload.pop("odooPassword", None)
+            payload.pop("password", None)
             controller = request.env["entry.control.controller"].sudo().upsert_from_hello(payload, mark_hello=False)
             if controller.blocked or controller.registration_status == "blocked":
                 return self._json_response({"ok": False, "blocked": True, "controller_code": controller.controller_code, "message": "Controller is blocked."}, 403)
-            token = controller.issue_runtime_token()
-            expires_in = 3600
-            expires_at = ""
-            if "token_expires_at" in controller._fields and controller.token_expires_at:
-                expires_at = fields.Datetime.to_string(controller.token_expires_at)
-                try:
-                    expires_in = max(1, int((controller.token_expires_at - fields.Datetime.now()).total_seconds()))
-                except Exception:
-                    expires_in = 3600
-            return self._json_response({
-                "ok": True,
-                "status": "success",
-                "controller_code": controller.controller_code,
-                "controller_id": controller.id,
-                "approved": bool(controller.approved),
-                "blocked": bool(controller.blocked),
-                "registration_status": controller.registration_status,
-                "access_token": token,
-                "token_type": "Bearer",
-                "expires_in": expires_in,
-                "expires_at": expires_at,
-                "server_time": fields.Datetime.to_string(fields.Datetime.now()),
-            })
+            tokens = controller.issue_runtime_tokens(auth_user=auth_user, rotate_refresh=True)
+            return self._json_response(self._auth_token_payload(controller, tokens))
+        except ValueError as e:
+            return self._json_response({"ok": False, "error": str(e)}, 401)
         except Exception as e:
             return self._json_response({"ok": False, "error": str(e)}, 500)
 
     @http.route(["/api/entry_control/v1/auth/refresh"], type="http", auth="public", methods=["POST"], csrf=False)
     def v1_auth_refresh(self, **kwargs):
-        return self.v1_auth_token(**kwargs)
+        """Refresh access token with a refresh token; no Odoo password required."""
+        try:
+            data = self._read_json_body()
+            code = self._get_controller_code(data)
+            if not code:
+                return self._json_response({"ok": False, "error": "controller_code is required"}, 400)
+            controller = self._find_controller(code)
+            if not controller:
+                return self._json_response({"ok": False, "error": "Unknown controller_code"}, 404)
+            if controller.blocked or controller.registration_status == "blocked" or not controller.approved:
+                controller.sudo().write({"last_seen_at": fields.Datetime.now(), "last_error": "Blocked/unapproved controller attempted token refresh."})
+                return self._json_response({"ok": False, "blocked": True, "error": "Controller is blocked or not approved"}, 403)
+            refresh_token = (data.get("refresh_token") or data.get("refreshToken") or self._get_header_token() or "").strip()
+            if not controller.check_refresh_token(refresh_token):
+                return self._json_response({"ok": False, "error": "Invalid or missing refresh token"}, 401)
+            if controller.refresh_token_expires_at and controller.refresh_token_expires_at <= fields.Datetime.now():
+                return self._json_response({"ok": False, "error": "Refresh token expired", "refresh_token_expired": True}, 401)
+            tokens = controller.issue_runtime_tokens(auth_user=controller.auth_user_id, rotate_refresh=True)
+            return self._json_response(self._auth_token_payload(controller, tokens))
+        except Exception as e:
+            return self._json_response({"ok": False, "error": str(e)}, 500)
 
     @http.route("/api/entry_control/v1/hello", type="http", auth="public", methods=["POST"], csrf=False)
     def v1_hello(self, **kwargs):
