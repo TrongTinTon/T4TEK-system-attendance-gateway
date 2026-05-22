@@ -25,7 +25,7 @@ Designed workflow:
 5. Controller pulls /api/entry_control/v1/sync/fingerprints only when fingerprint hashes changed.
 6. Controller computes local device jobs and synchronizes users/fingerprints to ZKTeco devices.
 """,
-    "version": '19.0.18.0',
+    "version": '19.0.19.0',
     "category": 'Human Resources/Attendances',
     "author": 'T4TEK',
     "maintainer": 'T4TEK',
@@ -47,6 +47,7 @@ Designed workflow:
         'views/fingerprint_views.xml',
         'views/assignment_views.xml',
         'views/attendance_views.xml',
+        'views/user_device_status_views.xml',
         'views/menu_views.xml',
     ],
     "assets": {
@@ -62,4 +63,5 @@ Designed workflow:
     "application": True,
     "installable": True,
     "auto_install": False,
+    "post_init_hook": "post_init_hook",
 }

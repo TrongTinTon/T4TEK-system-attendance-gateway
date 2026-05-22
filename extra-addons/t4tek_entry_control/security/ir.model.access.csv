@@ -13,3 +13,5 @@ access_entry_control_attendance_log_manager,entry.control.attendance.log.manager
 
 access_entry_control_fingerprint_user,entry.control.fingerprint.user,model_entry_control_fingerprint,group_entry_control_user,1,0,0,0
 access_entry_control_fingerprint_manager,entry.control.fingerprint.manager,model_entry_control_fingerprint,group_entry_control_manager,1,1,1,1
+access_entry_control_user_device_status_user,entry.control.user.device.status.user,model_entry_control_user_device_status,group_entry_control_user,1,0,0,0
+access_entry_control_user_device_status_manager,entry.control.user.device.status.manager,model_entry_control_user_device_status,group_entry_control_manager,1,1,1,1

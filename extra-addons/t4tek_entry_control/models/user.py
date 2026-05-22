@@ -209,6 +209,22 @@ class EntryControlUser(models.Model):
 class HrEmployee(models.Model):
     _inherit = "hr.employee"
 
+
+    @api.constrains("pin")
+    def _entry_control_check_employee_pin_unique(self):
+        if "pin" not in self._fields:
+            return
+        for employee in self:
+            pin = str(employee.pin or "").strip()
+            if not pin:
+                continue
+            duplicate = self.with_context(active_test=False).sudo().search([
+                ("id", "!=", employee.id),
+                ("pin", "=", pin),
+            ], limit=1)
+            if duplicate:
+                raise ValidationError(_("Employee PIN must be unique. PIN %s is already used by employee %s.") % (pin, duplicate.display_name))
+
     def _entry_control_device_user_vals(self):
         self.ensure_one()
         pin = str(getattr(self, "pin", "") or "").strip() if "pin" in self._fields else ""
@@ -256,6 +272,19 @@ class HrEmployee(models.Model):
             else:
                 DeviceUser.create(vals)
         return True
+
+
+    def unlink(self):
+        # Employee deletion should also remove the related Device User from the
+        # desired state.  We keep the Device User row as is_deleted=True so
+        # Controllers can pull a delete_user desired state and remove the user
+        # from physical devices.  This is safer than hard deleting the row before
+        # devices receive the deletion.
+        DeviceUser = self.env["entry.control.user"].sudo()
+        linked_users = DeviceUser.search([("employee_id", "in", self.ids)])
+        if linked_users:
+            linked_users.write({"is_active": False, "is_deleted": True})
+        return super().unlink()
 
     @api.model_create_multi
     def create(self, vals_list):

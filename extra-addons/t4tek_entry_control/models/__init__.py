@@ -7,3 +7,4 @@ from . import attendance_log
 
 
 from . import fingerprint_map
+from . import user_device_status

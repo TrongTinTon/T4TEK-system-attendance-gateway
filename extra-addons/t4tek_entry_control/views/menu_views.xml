@@ -15,6 +15,12 @@
               action="action_entry_control_user"
               sequence="10"/>
 
+    <menuitem id="menu_entry_control_user_device_status"
+              name="User Sync Status"
+              parent="menu_entry_control_operation"
+              action="action_entry_control_user_device_status"
+              sequence="15"/>
+
     <menuitem id="menu_entry_control_fingerprints"
               name="Fingerprints"
               parent="menu_entry_control_operation"

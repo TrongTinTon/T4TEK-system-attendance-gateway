@@ -659,31 +659,48 @@ class EntryControlAPI(http.Controller):
         except Exception as e:
             return self._json_response({"ok": False, "error": str(e)}, 500)
 
-    # ------------------------------------------------------------------
-    # Deprecated command-log compatibility
-    # ------------------------------------------------------------------
-    @http.route("/api/entry_control/v1/commands/pull", type="http", auth="public", methods=["POST"], csrf=False)
-    def v1_commands_pull(self, **kwargs):
-        data = self._read_json_body()
-        controller, error = self._auth_controller(data)
-        if error:
-            return error
-        return self._json_response({
-            "ok": True,
-            "status": "deprecated",
-            "sync_mode": "desired_state_manifest",
-            "message": "Deprecated endpoint. Use /api/entry_control/v1/sync/manifest.",
-            "commands": [],
-            "count": 0,
-        })
 
-    @http.route("/api/entry_control/v1/commands/ack", type="http", auth="public", methods=["POST"], csrf=False)
-    def v1_commands_ack(self, **kwargs):
-        data = self._read_json_body()
-        controller, error = self._auth_controller(data)
-        if error:
-            return error
-        return self._json_response({"ok": True, "status": "ignored", "message": "Command ACK is unused in desired-state sync."})
+
+    @http.route("/api/entry_control/v1/sync/user-device/results", type="http", auth="public", methods=["POST"], csrf=False)
+    def v1_user_device_sync_results(self, **kwargs):
+        try:
+            data = self._read_json_body()
+            controller, error = self._auth_controller(data)
+            if error:
+                return error
+            items = data.get("results") or data.get("items") or []
+            if isinstance(items, dict):
+                items = [items]
+            if not isinstance(items, list):
+                return self._json_response({"ok": False, "error": "results must be a list"}, 400)
+            Status = request.env["entry.control.user.device.status"].sudo()
+            updated = []
+            failed = []
+            for index, item in enumerate(items):
+                try:
+                    if not isinstance(item, dict):
+                        raise ValueError("result item must be an object")
+                    rec = Status.upsert_from_controller_result(controller, item)
+                    updated.append({
+                        "index": index,
+                        "status_id": rec.id,
+                        "local_job_id": item.get("local_job_id") or item.get("localJobId") or item.get("job_id") or item.get("jobId"),
+                        "pin": rec.pin,
+                        "device_code": rec.device_code,
+                        "sync_status": rec.sync_status,
+                    })
+                except Exception as item_error:
+                    failed.append({"index": index, "error": str(item_error)})
+            controller.sudo().write({"last_seen_at": fields.Datetime.now()})
+            return self._json_response({
+                "ok": not bool(failed),
+                "status": "success" if not failed else "partial_error",
+                "received": len(items),
+                "updated": updated,
+                "failed": failed,
+            }, 200 if not failed else 207)
+        except Exception as e:
+            return self._json_response({"ok": False, "error": str(e)}, 500)
 
     @http.route("/api/entry_control/v1/attendance/logs/push", type="http", auth="public", methods=["POST"], csrf=False)
     def v1_attendance_logs_push(self, **kwargs):

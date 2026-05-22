@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_entry_control_user_device_status_list" model="ir.ui.view">
+        <field name="name">entry.control.user.device.status.list</field>
+        <field name="model">entry.control.user.device.status</field>
+        <field name="arch" type="xml">
+            <list string="User Sync Status" create="0" edit="0" delete="0"
+                  decoration-success="sync_status == 'success'"
+                  decoration-danger="sync_status == 'failed'"
+                  decoration-warning="sync_status in ('pending','syncing')">
+                <field name="sync_status" widget="badge"/>
+                <field name="actual_state" widget="badge"/>
+                <field name="pin"/>
+                <field name="user_id"/>
+                <field name="controller_id"/>
+                <field name="device_id"/>
+                <field name="device_code"/>
+                <field name="required_action"/>
+                <field name="last_synced_at"/>
+                <field name="last_reported_at"/>
+                <field name="last_error"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_entry_control_user_device_status_form" model="ir.ui.view">
+        <field name="name">entry.control.user.device.status.form</field>
+        <field name="model">entry.control.user.device.status</field>
+        <field name="arch" type="xml">
+            <form string="User Sync Status" create="0" edit="0" delete="0">
+                <sheet>
+                    <div class="oe_title">
+                        <h1><field name="display_name" readonly="1"/></h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="sync_status" widget="badge" readonly="1"/>
+                            <field name="actual_state" widget="badge" readonly="1"/>
+                            <field name="required_action" readonly="1"/>
+                            <field name="pin" readonly="1"/>
+                            <field name="user_id" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="controller_id" readonly="1"/>
+                            <field name="device_id" readonly="1"/>
+                            <field name="device_code" readonly="1"/>
+                            <field name="last_local_job_id" readonly="1"/>
+                        </group>
+                    </group>
+                    <group string="Sync Result">
+                        <field name="last_message" readonly="1"/>
+                        <field name="last_synced_at" readonly="1"/>
+                        <field name="last_reported_at" readonly="1"/>
+                    </group>
+                    <group string="Error">
+                        <field name="last_error" readonly="1" nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_entry_control_user_device_status_search" model="ir.ui.view">
+        <field name="name">entry.control.user.device.status.search</field>
+        <field name="model">entry.control.user.device.status</field>
+        <field name="arch" type="xml">
+            <search string="User Sync Status">
+                <field name="pin"/>
+                <field name="user_id"/>
+                <field name="controller_id"/>
+                <field name="device_id"/>
+                <field name="device_code"/>
+                <filter name="success" string="Success" domain="[('sync_status','=','success')]"/>
+                <filter name="failed" string="Failed" domain="[('sync_status','=','failed')]"/>
+                <filter name="present" string="Present" domain="[('actual_state','=','present')]"/>
+                <filter name="deleted" string="Deleted" domain="[('actual_state','=','deleted')]"/>
+                <separator/>
+                <filter name="group_controller" string="Controller" context="{'group_by':'controller_id'}"/>
+                <filter name="group_device" string="Device" context="{'group_by':'device_id'}"/>
+                <filter name="group_user" string="Device User" context="{'group_by':'user_id'}"/>
+                <filter name="group_status" string="Sync Status" context="{'group_by':'sync_status'}"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_entry_control_user_device_status" model="ir.actions.act_window">
+        <field name="name">User Sync Status</field>
+        <field name="res_model">entry.control.user.device.status</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="view_entry_control_user_device_status_search"/>
+    </record>
+</odoo>
