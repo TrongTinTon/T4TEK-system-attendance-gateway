@@ -150,6 +150,22 @@ class EntryControlController(models.Model):
             "params": {"title": _("Secret Key generated"), "message": _("A new secret key has been generated. Update the Controller configuration."), "type": "success", "sticky": False},
         }
 
+    def action_copy_secret_key(self):
+        self.ensure_one()
+        if not self.env.user.has_group("base.group_system"):
+            raise UserError(_("Only Settings administrators can copy the secret key."))
+        if not self.secret_key:
+            raise UserError(_("This controller does not have a secret key."))
+        return {
+            "type": "ir.actions.client",
+            "tag": "t4tek_entry_control.copy_to_clipboard",
+            "params": {
+                "text": self.secret_key,
+                "title": _("Secret Key"),
+                "message": _("Secret Key copied to clipboard."),
+            },
+        }
+
     def action_block(self):
         self.write({"status": "blocked", "active": False, "token_hash": False, "refresh_token_hash": False, "last_error": _("Blocked by administrator.")})
         return True

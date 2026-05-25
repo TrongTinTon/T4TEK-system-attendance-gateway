@@ -8,7 +8,7 @@ class EntryControlEmployeeSync(models.Model):
 
     controller_id = fields.Many2one("entry.control.controller", required=True, ondelete="cascade", index=True)
     employee_id = fields.Many2one("hr.employee", required=True, ondelete="cascade", index=True)
-    pin = fields.Char(index=True)
+    pin = fields.Char(string="Device Password/PIN", index=True)
     employee_name = fields.Char()
     last_synced_at = fields.Datetime()
     sync_status = fields.Selection([

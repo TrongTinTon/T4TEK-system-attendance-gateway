@@ -7,7 +7,7 @@ from odoo import api, fields, models, _
 class HrEmployee(models.Model):
     _inherit = "hr.employee"
 
-    entry_control_pin = fields.Char(string="Entry Control PIN", copy=False, index=True)
+    entry_control_pin = fields.Char(string="Entry Control Device Password/PIN", copy=False, index=True)
 
 
 class EntryControlAttendanceLog(models.Model):
@@ -57,18 +57,34 @@ class EntryControlAttendanceLog(models.Model):
 
     @api.model
     def _employee_pin_fields(self):
+        # Latest design: `employee_id` from Controller is the canonical
+        # Odoo hr.employee.id. Employee `pin` is only the device password/PIN.
         Employee = self.env["hr.employee"]
-        fields_ = []
-        if "pin" in Employee._fields:
-            fields_.append("pin")
-        if "entry_control_pin" in Employee._fields:
-            fields_.append("entry_control_pin")
-        if "barcode" in Employee._fields:
-            fields_.append("barcode")
-        return fields_
+        preferred = ["pin", "entry_control_pin"]
+        return [fname for fname in preferred if fname in Employee._fields]
+
+    @api.model
+    def _employee_pin(self, employee):
+        for field_name in self._employee_pin_fields():
+            value = str(employee[field_name] or "").strip()
+            if value:
+                return value
+        return ""
+
+    @api.model
+    def find_employee_by_employee_id(self, employee_id):
+        raw = str(employee_id or "").strip()
+        Employee = self.env["hr.employee"].sudo()
+        if not raw:
+            return Employee.browse()
+        try:
+            return Employee.browse(int(raw)).exists()
+        except Exception:
+            return Employee.browse()
 
     @api.model
     def find_employee_by_pin(self, pin):
+        # Legacy fallback only. New API matching must use employee_id = hr.employee.id.
         pin = str(pin or "").strip()
         if not pin:
             return self.env["hr.employee"].browse()
@@ -165,7 +181,9 @@ class EntryControlAttendanceLog(models.Model):
     def ingest_direct_log(self, controller, data):
         data = dict(data or {})
         serial = str(data.get("device_serial_number") or data.get("serial_number") or data.get("device_code") or data.get("deviceCode") or "").strip()
-        employee_id = data.get("employee_id") or data.get("employeeId")
+        # employee_id is the canonical Odoo hr.employee.id and should also be
+        # used by the Controller as the ZKTeco device user ID / EnrollNumber.
+        api_employee_id = str(data.get("employee_id") or data.get("employeeId") or "").strip()
         pin = str(data.get("pin") or "").strip()
         check_raw = data.get("check_time") or data.get("checkTime") or data.get("time") or data.get("timestamp")
         check_dt, parsed_tz = self._parse_dt(check_raw)
@@ -175,17 +193,12 @@ class EntryControlAttendanceLog(models.Model):
 
         Device = self.env["entry.control.device"].sudo()
         device = Device.search([("controller_id", "=", controller.id), ("serial_number", "=", serial)], limit=1) if serial else Device.browse()
-        Employee = self.env["hr.employee"].sudo()
-        employee = Employee.browse(int(employee_id)).exists() if employee_id else Employee.browse()
+        employee = self.find_employee_by_employee_id(api_employee_id)
         if not employee and pin:
+            # Legacy fallback only for old controller payloads.
             employee = self.find_employee_by_pin(pin)
-        if employee and not pin:
-            for fname in self._employee_pin_fields():
-                pin = str(employee[fname] or "").strip()
-                if pin:
-                    break
 
-        event_hash = data.get("event_hash") or data.get("eventHash") or self._event_hash(controller, serial, employee.id if employee else False, pin, check_dt, check_type, verify_type)
+        event_hash = data.get("event_hash") or data.get("eventHash") or self._event_hash(controller, serial, api_employee_id, pin, check_dt, check_type, verify_type)
         existing = self.sudo().search([("event_hash", "=", event_hash)], limit=1)
         if existing:
             return existing, True
@@ -220,7 +233,7 @@ class EntryControlAttendanceLog(models.Model):
         for rec in self:
             try:
                 if not rec.employee_id:
-                    raise ValueError(_("Cannot sync to Attendances: employee not found for PIN %s.") % (rec.pin or ""))
+                    raise ValueError(_("Cannot sync to Attendances: employee not found for this attendance log."))
                 check_dt = rec.check_time
                 open_att = Attendance.search([
                     ("employee_id", "=", rec.employee_id.id),

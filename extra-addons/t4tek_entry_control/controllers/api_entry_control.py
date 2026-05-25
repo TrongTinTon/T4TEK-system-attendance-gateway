@@ -52,23 +52,44 @@ class EntryControlAPI(http.Controller):
         controller.write({"last_heartbeat_at": fields.Datetime.now(), "status": "online", "last_error": False})
         return controller, None
 
-    def _employee_pin_fields(self):
-        Employee = request.env["hr.employee"].sudo()
-        fields_ = []
-        if "pin" in Employee._fields:
-            fields_.append("pin")
-        if "entry_control_pin" in Employee._fields:
-            fields_.append("entry_control_pin")
-        if "barcode" in Employee._fields:
-            fields_.append("barcode")
-        return fields_
+    def _employee_device_password_fields(self):
+        """Return hr.employee fields that may store the device login password/PIN.
 
-    def _employee_pin(self, employee):
-        for fname in self._employee_pin_fields():
+        Latest design: `employee_id` in API payloads is the numeric Odoo
+        `hr.employee.id`. The employee `pin` is only the password/PIN used
+        when creating the user on the ZKTeco device, not the user identifier.
+        """
+        Employee = request.env["hr.employee"].sudo()
+        preferred = ["pin", "entry_control_pin"]
+        return [fname for fname in preferred if fname in Employee._fields]
+
+    def _employee_device_password(self, employee):
+        for fname in self._employee_device_password_fields():
             value = str(employee[fname] or "").strip()
             if value:
                 return value
         return ""
+
+    # Backward-compatible helper names used by older code paths.
+    def _employee_pin_fields(self):
+        return self._employee_device_password_fields()
+
+    def _employee_pin(self, employee):
+        return self._employee_device_password(employee)
+
+    def _find_employee_by_api_employee_id(self, employee_id):
+        """Find hr.employee by the canonical API employee_id = hr.employee.id."""
+        raw = str(employee_id or "").strip()
+        Employee = request.env["hr.employee"].sudo()
+        if not raw:
+            return Employee.browse()
+        try:
+            emp = Employee.browse(int(raw)).exists()
+            if emp:
+                return emp
+        except Exception:
+            pass
+        return Employee.browse()
 
     @http.route("/api/entry_control/v1/health", type="http", auth="none", methods=["GET", "POST"], csrf=False)
     def health(self, **kwargs):
@@ -111,16 +132,20 @@ class EntryControlAPI(http.Controller):
         Controller = request.env["entry.control.controller"].sudo()
         domain = [("controller_uid", "=", uid)] if uid else []
         for controller in Controller.search(domain):
-            if controller.check_refresh_token(refresh_token):
-                access_token, new_refresh_token = controller.issue_tokens()
-                return self._json_response({
-                    "ok": True,
-                    "access_token": access_token,
-                    "refresh_token": new_refresh_token,
-                    "expires_at": fields.Datetime.to_string(controller.token_expires_at),
-                    "refresh_expires_at": fields.Datetime.to_string(controller.refresh_token_expires_at),
-                    "token_hint": controller.token_hint,
-                })
+            if not controller.check_refresh_token(refresh_token):
+                continue
+            if not controller.active or controller.status == "blocked":
+                controller.write({"last_error": "Blocked/inactive controller attempted token refresh."})
+                return self._json_response({"ok": False, "error": "Controller is blocked or inactive"}, 403)
+            access_token, new_refresh_token = controller.issue_tokens()
+            return self._json_response({
+                "ok": True,
+                "access_token": access_token,
+                "refresh_token": new_refresh_token,
+                "expires_at": fields.Datetime.to_string(controller.token_expires_at),
+                "refresh_expires_at": fields.Datetime.to_string(controller.refresh_token_expires_at),
+                "token_hint": controller.token_hint,
+            })
         return self._json_response({"ok": False, "error": "Invalid refresh_token"}, 401)
 
     @http.route("/api/entry_control/v1/hello", type="http", auth="none", methods=["POST"], csrf=False)
@@ -138,29 +163,50 @@ class EntryControlAPI(http.Controller):
         controller, error = self._auth_controller(data)
         if error:
             return error
+
+        # Latest clean design: employee_id in this API is the canonical
+        # Odoo hr.employee.id. The employee pin is the device password/PIN.
         last_sync_at = data.get("last_sync_at") or data.get("lastSyncAt")
+        include_inactive = bool(data.get("include_inactive") or data.get("includeInactive"))
+        server_sync_at = fields.Datetime.now()
+
         Employee = request.env["hr.employee"].sudo()
-        domain = [("active", "=", True)] if "active" in Employee._fields else []
+        domain = []
+        if "active" in Employee._fields and not include_inactive:
+            domain.append(("active", "=", True))
         if last_sync_at:
             try:
                 domain.append(("write_date", ">", fields.Datetime.to_datetime(last_sync_at)))
             except Exception:
-                pass
+                # Invalid cursor should not break the controller pull; treat it as full pull.
+                domain = [(d[0], d[1], d[2]) for d in domain if d[0] != "write_date"]
+
         employees = Employee.search(domain, order="write_date asc, id asc")
         items = []
         for emp in employees:
-            pin = self._employee_pin(emp)
-            if not pin:
-                continue
+            device_password = self._employee_device_password(emp)
             items.append({
+                # Canonical Odoo employee identifier. Controller should use this
+                # as the device user ID / ZKTeco EnrollNumber when syncing users.
                 "employee_id": emp.id,
                 "name": emp.name or emp.display_name,
-                "pin": pin,
+                # Device password/PIN. This is NOT the device user identifier.
+                "pin": device_password,
                 "active": bool(emp.active) if "active" in emp._fields else True,
                 "write_date": fields.Datetime.to_string(emp.write_date),
             })
-        controller.write({"last_sync_at": fields.Datetime.now()})
-        return self._json_response({"ok": True, "count": len(items), "employees": items, "items": items})
+
+        controller.write({"last_sync_at": server_sync_at})
+        return self._json_response({
+            "ok": True,
+            "count": len(items),
+            "employees": items,
+            "items": items,
+            "server_sync_at": fields.Datetime.to_string(server_sync_at),
+            "last_sync_at_received": last_sync_at or False,
+            "pin_fields": self._employee_device_password_fields(),
+            "note": "employee_id is hr.employee.id; pin is the device password/PIN",
+        })
 
     @http.route("/api/entry_control/v1/employees/sync-status", type="http", auth="none", methods=["POST"], csrf=False)
     def employees_sync_status(self, **kwargs):
@@ -175,10 +221,10 @@ class EntryControlAPI(http.Controller):
         failed = []
         for idx, item in enumerate(items if isinstance(items, list) else []):
             try:
-                emp_id = int(item.get("employee_id") or item.get("employeeId") or 0)
-                emp = Employee.browse(emp_id).exists()
+                api_employee_id = str(item.get("employee_id") or item.get("employeeId") or "").strip()
+                emp = self._find_employee_by_api_employee_id(api_employee_id)
                 if not emp:
-                    raise ValueError("employee_id not found: %s" % emp_id)
+                    raise ValueError("employee_id not found on hr.employee.id: %s" % api_employee_id)
                 vals = {
                     "controller_id": controller.id,
                     "employee_id": emp.id,
