@@ -194,6 +194,13 @@ class EntryControlAPI(http.Controller):
         controller.write({"last_heartbeat_at": fields.Datetime.now(), "last_sync_at": fields.Datetime.now(), "status": "online"})
         return self._json_response({"ok": True, "controller_uid": controller.controller_uid, "status": controller.status, "approved": True, "message": "Hello OK"})
 
+    def _safe_positive_int(self, value, default=1):
+        try:
+            parsed = int(value)
+            return parsed if parsed > 0 else default
+        except Exception:
+            return default
+
     @http.route("/api/entry_control/v1/employees", type="http", auth="none", methods=["POST"], csrf=False)
     def employees(self, **kwargs):
         data = self._read_json_body()
@@ -203,9 +210,41 @@ class EntryControlAPI(http.Controller):
 
         # Latest clean design: employee_id in this API is the canonical
         # Odoo hr.employee.id. The employee pin is the device password/PIN.
+        #
+        # Pagination contract:
+        #   request:  page/page_size or offset/limit
+        #   response: items + has_more + next_page/next_offset
+        # page_size is capped at 100 so the Controller never receives 1000+
+        # employees in a single response. `sync_cursor_to` keeps all pages in
+        # one stable snapshot while paging through changed employees.
         last_sync_at = data.get("last_sync_at") or data.get("lastSyncAt")
         include_inactive = bool(data.get("include_inactive") or data.get("includeInactive"))
+
+        requested_page_size = (
+            data.get("page_size")
+            or data.get("pageSize")
+            or data.get("limit")
+            or 100
+        )
+        page_size = min(max(self._safe_positive_int(requested_page_size, 100), 1), 100)
+        page = self._safe_positive_int(data.get("page") or data.get("pageIndex"), 1)
+        if data.get("offset") is not None:
+            try:
+                offset = max(int(data.get("offset") or 0), 0)
+                page = (offset // page_size) + 1
+            except Exception:
+                offset = (page - 1) * page_size
+        else:
+            offset = (page - 1) * page_size
+
         server_sync_at = fields.Datetime.now()
+        snapshot_raw = (
+            data.get("sync_cursor_to")
+            or data.get("syncCursorTo")
+            or data.get("snapshot_sync_at")
+            or data.get("snapshotSyncAt")
+        )
+        snapshot_sync_at = self._safe_datetime_value(snapshot_raw) if snapshot_raw else fields.Datetime.to_string(server_sync_at)
 
         Employee = request.env["hr.employee"].sudo()
         domain = []
@@ -215,11 +254,11 @@ class EntryControlAPI(http.Controller):
             cursor_dt = self._safe_datetime_value(last_sync_at)
             if cursor_dt:
                 domain.append(("write_date", ">", cursor_dt))
-            else:
-                # Invalid cursor should not break the controller pull; treat it as full pull.
-                domain = [(d[0], d[1], d[2]) for d in domain if d[0] != "write_date"]
+        if snapshot_sync_at:
+            domain.append(("write_date", "<=", snapshot_sync_at))
 
-        employees = Employee.search(domain, order="write_date asc, id asc")
+        total_count = Employee.search_count(domain)
+        employees = Employee.search(domain, order="write_date asc, id asc", limit=page_size, offset=offset)
         items = []
         for emp in employees:
             device_password = self._employee_device_password(emp)
@@ -235,9 +274,9 @@ class EntryControlAPI(http.Controller):
             })
 
         # Make Employee Sync Status visible as soon as a Controller successfully
-        # pulls the employee list, but do not overwrite an already-successful
-        # Controller report on every incremental poll. Only mark pending when the
-        # row is new or the employee changed after the last successful report.
+        # pulls each page, but do not overwrite an already-successful Controller
+        # report on every incremental poll. Only mark pending when the row is new
+        # or the employee changed after the last successful report.
         Sync = request.env["entry.control.employee.sync"].sudo()
         pending_count = 0
         preserved_count = 0
@@ -262,7 +301,7 @@ class EntryControlAPI(http.Controller):
             vals.update({
                 "last_synced_at": server_sync_at,
                 "sync_status": "pending",
-                "error_message": "Sent to Controller by /api/entry_control/v1/employees; waiting for /employees/sync-status.",
+                "error_message": "Sent to Controller by /api/entry_control/v1/employees page %s; waiting for /employees/sync-status." % page,
             })
             if rec:
                 rec.write(vals)
@@ -270,18 +309,32 @@ class EntryControlAPI(http.Controller):
                 Sync.create(vals)
             pending_count += 1
 
+        has_more = (offset + len(items)) < total_count
+        next_offset = offset + len(items) if has_more else False
+        next_page = page + 1 if has_more else False
         controller.write({"last_sync_at": server_sync_at})
         return self._json_response({
             "ok": True,
             "count": len(items),
+            "total_count": total_count,
+            "total": total_count,
+            "page": page,
+            "page_size": page_size,
+            "limit": page_size,
+            "offset": offset,
+            "has_more": has_more,
+            "next_page": next_page,
+            "next_offset": next_offset,
             "employees": items,
             "items": items,
             "server_sync_at": fields.Datetime.to_string(server_sync_at),
+            "sync_cursor_to": snapshot_sync_at,
+            "snapshot_sync_at": snapshot_sync_at,
             "last_sync_at_received": last_sync_at or False,
             "pin_fields": self._employee_device_password_fields(),
             "employee_sync_status_pending": pending_count,
             "employee_sync_status_preserved": preserved_count,
-            "note": "employee_id is hr.employee.id; pin is the device password/PIN",
+            "note": "employee_id is hr.employee.id; pin is the device password/PIN; employees are paged and page_size is capped at 100",
         })
 
     @http.route("/api/entry_control/v1/employees/sync-status", type="http", auth="none", methods=["POST"], csrf=False)
