@@ -7,7 +7,6 @@
                 <field name="controller_id"/>
                 <field name="employee_id"/>
                 <field name="employee_name"/>
-                <field name="pin"/>
                 <field name="last_synced_at"/>
                 <field name="sync_status" widget="badge" decoration-success="sync_status == 'success'" decoration-danger="sync_status == 'failed'" decoration-muted="sync_status == 'skipped'"/>
                 <field name="error_message"/>
@@ -23,7 +22,6 @@
                 <field name="controller_id"/>
                 <field name="employee_id"/>
                 <field name="employee_name"/>
-                <field name="pin"/>
                 <filter name="filter_sync_success" string="Success" domain="[('sync_status','=','success')]"/>
                 <filter name="filter_sync_failed" string="Failed" domain="[('sync_status','=','failed')]"/>
                 <filter name="filter_sync_pending" string="Pending" domain="[('sync_status','=','pending')]"/>

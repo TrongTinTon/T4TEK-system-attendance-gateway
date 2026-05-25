@@ -1,4 +1,3 @@
-import hashlib
 from datetime import timezone
 from dateutil import parser as date_parser
 from odoo import api, fields, models, _
@@ -18,11 +17,9 @@ class EntryControlAttendanceLog(models.Model):
     controller_id = fields.Many2one("entry.control.controller", ondelete="set null", index=True)
     device_id = fields.Many2one("entry.control.device", ondelete="set null", index=True)
     employee_id = fields.Many2one("hr.employee", ondelete="set null", index=True)
-    pin = fields.Char(index=True)
 
+    # Final operational direction used to create/update hr.attendance.
     direction = fields.Selection([("in", "Check In"), ("out", "Check Out")], default="in", required=True, index=True)
-    direction_source = fields.Selection([("device", "Device"), ("software_inferred", "Software Inferred"), ("hybrid", "Hybrid")], default="hybrid", index=True)
-    device_direction = fields.Selection([("in", "Device Check In"), ("out", "Device Check Out")], default="in", index=True)
 
     check_time = fields.Datetime(string="Check Time", required=True, index=True)
     device_check_time = fields.Char(string="Device Check Time")
@@ -39,7 +36,6 @@ class EntryControlAttendanceLog(models.Model):
     ], default="unknown", index=True)
     verify_type = fields.Char(string="Verify Type")
     check_type = fields.Char(string="Check Type")
-    device_check_type = fields.Char(string="Device Check Type")
 
     hr_attendance_id = fields.Many2one("hr.attendance", string="HR Attendance", ondelete="set null", readonly=True, index=True)
     sync_status = fields.Selection([
@@ -48,17 +44,17 @@ class EntryControlAttendanceLog(models.Model):
         ("skipped", "Skipped"),
     ], default="success", index=True)
     error_message = fields.Text()
-    event_hash = fields.Char(required=True, index=True, copy=False)
     created_at = fields.Datetime(default=fields.Datetime.now, readonly=True)
 
-    _sql_constraints = [
-        ("attendance_event_hash_unique", "unique(event_hash)", "Attendance Log already exists."),
-    ]
+    def init(self):
+        # Remove heavy/duplicated fields from earlier builds. Odoo does not
+        # always drop old columns automatically on upgrade, so do it explicitly.
+        self.env.cr.execute("ALTER TABLE IF EXISTS entry_control_attendance_log DROP CONSTRAINT IF EXISTS attendance_event_hash_unique")
+        for column in ("event_hash", "pin", "direction_source", "device_direction", "device_check_type"):
+            self.env.cr.execute('ALTER TABLE IF EXISTS entry_control_attendance_log DROP COLUMN IF EXISTS "%s"' % column)
 
     @api.model
     def _employee_pin_fields(self):
-        # Latest design: `employee_id` from Controller is the canonical
-        # Odoo hr.employee.id. Employee `pin` is only the device password/PIN.
         Employee = self.env["hr.employee"]
         preferred = ["pin", "entry_control_pin"]
         return [fname for fname in preferred if fname in Employee._fields]
@@ -84,7 +80,7 @@ class EntryControlAttendanceLog(models.Model):
 
     @api.model
     def find_employee_by_pin(self, pin):
-        # Legacy fallback only. New API matching must use employee_id = hr.employee.id.
+        # Legacy fallback only. New API matching should use employee_id = hr.employee.id.
         pin = str(pin or "").strip()
         if not pin:
             return self.env["hr.employee"].browse()
@@ -122,18 +118,19 @@ class EntryControlAttendanceLog(models.Model):
         return "in"
 
     @api.model
-    def _infer_direction(self, employee, check_dt, device_direction, check_type):
-        # Hybrid mode: trust explicit out from device; if device only sends default check-in, infer from open attendance.
+    def _infer_direction(self, employee, check_dt, device_direction):
+        # Hybrid behavior without storing source: trust explicit out from device;
+        # otherwise infer from open hr.attendance.
         if device_direction == "out":
-            return "out", "device"
+            return "out"
         if employee:
             open_att = self.env["hr.attendance"].sudo().search([
                 ("employee_id", "=", employee.id),
                 ("check_out", "=", False),
             ], order="check_in desc, id desc", limit=1)
             if open_att:
-                return "out", "hybrid"
-        return "in", "hybrid"
+                return "out"
+        return "in"
 
     @api.model
     def _verify_method_from_type(self, verify_type):
@@ -165,26 +162,23 @@ class EntryControlAttendanceLog(models.Model):
         return "mixed"
 
     @api.model
-    def _event_hash(self, controller, serial, employee_id, pin, check_time, check_type, verify_type):
-        text = "%s|%s|%s|%s|%s|%s|%s" % (
-            controller.controller_uid if controller else "",
-            serial or "",
-            employee_id or "",
-            pin or "",
-            fields.Datetime.to_string(check_time) if check_time else "",
-            check_type or "",
-            verify_type or "",
-        )
-        return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    def _find_existing_log(self, controller, device, employee, check_time, check_type, verify_type):
+        domain = [
+            ("controller_id", "=", controller.id if controller else False),
+            ("device_id", "=", device.id if device else False),
+            ("employee_id", "=", employee.id if employee else False),
+            ("check_time", "=", check_time),
+            ("check_type", "=", check_type or ""),
+            ("verify_type", "=", verify_type or ""),
+        ]
+        return self.sudo().search(domain, limit=1)
 
     @api.model
     def ingest_direct_log(self, controller, data):
         data = dict(data or {})
         serial = str(data.get("device_serial_number") or data.get("serial_number") or data.get("device_code") or data.get("deviceCode") or "").strip()
-        # employee_id is the canonical Odoo hr.employee.id and should also be
-        # used by the Controller as the ZKTeco device user ID / EnrollNumber.
         api_employee_id = str(data.get("employee_id") or data.get("employeeId") or "").strip()
-        pin = str(data.get("pin") or "").strip()
+        legacy_pin = str(data.get("pin") or "").strip()
         check_raw = data.get("check_time") or data.get("checkTime") or data.get("time") or data.get("timestamp")
         check_dt, parsed_tz = self._parse_dt(check_raw)
         device_timezone = data.get("device_timezone") or data.get("deviceTimezone") or parsed_tz or ""
@@ -194,34 +188,27 @@ class EntryControlAttendanceLog(models.Model):
         Device = self.env["entry.control.device"].sudo()
         device = Device.search([("controller_id", "=", controller.id), ("serial_number", "=", serial)], limit=1) if serial else Device.browse()
         employee = self.find_employee_by_employee_id(api_employee_id)
-        if not employee and pin:
-            # Legacy fallback only for old controller payloads.
-            employee = self.find_employee_by_pin(pin)
+        if not employee and legacy_pin:
+            employee = self.find_employee_by_pin(legacy_pin)
 
-        event_hash = data.get("event_hash") or data.get("eventHash") or self._event_hash(controller, serial, api_employee_id, pin, check_dt, check_type, verify_type)
-        existing = self.sudo().search([("event_hash", "=", event_hash)], limit=1)
+        existing = self._find_existing_log(controller, device, employee, check_dt, check_type, verify_type)
         if existing:
             return existing, True
 
         device_direction = self._device_direction_from_check_type(check_type)
-        direction, source = self._infer_direction(employee, check_dt, device_direction, check_type)
+        direction = self._infer_direction(employee, check_dt, device_direction)
         verify_method = data.get("verify_method") or data.get("verifyMethod") or self._verify_method_from_type(verify_type)
         vals = {
             "controller_id": controller.id,
             "device_id": device.id if device else False,
             "employee_id": employee.id if employee else False,
-            "pin": pin,
             "direction": direction,
-            "direction_source": source,
-            "device_direction": device_direction,
             "check_time": check_dt,
             "device_check_time": str(check_raw or ""),
             "device_timezone": device_timezone,
             "verify_method": verify_method if verify_method in dict(self._fields["verify_method"].selection) else "unknown",
             "verify_type": verify_type,
             "check_type": check_type,
-            "device_check_type": check_type,
-            "event_hash": event_hash,
             "sync_status": "success",
         }
         rec = self.sudo().create(vals)

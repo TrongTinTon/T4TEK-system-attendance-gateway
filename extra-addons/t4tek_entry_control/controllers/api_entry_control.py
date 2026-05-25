@@ -237,7 +237,6 @@ class EntryControlAPI(http.Controller):
             common_vals = {
                 "controller_id": controller.id,
                 "employee_id": emp.id,
-                "pin": item.get("pin") or "",
                 "employee_name": emp.name or emp.display_name,
             }
             rec = Sync.search([("controller_id", "=", controller.id), ("employee_id", "=", emp.id)], limit=1)
@@ -297,7 +296,6 @@ class EntryControlAPI(http.Controller):
                 vals = {
                     "controller_id": controller.id,
                     "employee_id": emp.id,
-                    "pin": item.get("pin") or self._employee_pin(emp),
                     "employee_name": emp.name or emp.display_name,
                     "last_synced_at": self._safe_datetime_value(item.get("last_synced_at") or item.get("lastSyncedAt")) or fields.Datetime.now(),
                     "sync_status": item.get("sync_status") or item.get("status") or "success",
@@ -355,9 +353,7 @@ class EntryControlAPI(http.Controller):
                     "status": "success" if rec.sync_status != "failed" else "failed",
                     "message": rec.error_message or "",
                     "direction": rec.direction,
-                    "direction_source": rec.direction_source,
                     "duplicate": duplicate,
-                    "event_hash": rec.event_hash,
                 })
                 if rec.sync_status == "failed":
                     failed.append({"index": idx, "error": rec.error_message or "Failed"})

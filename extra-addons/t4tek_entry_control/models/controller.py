@@ -144,11 +144,10 @@ class EntryControlController(models.Model):
                 "token_expires_at": False,
                 "refresh_token_expires_at": False,
             })
-        return {
-            "type": "ir.actions.client",
-            "tag": "display_notification",
-            "params": {"title": _("Secret Key generated"), "message": _("A new secret key has been generated. Update the Controller configuration."), "type": "success", "sticky": False},
-        }
+        # Force form reload so the newly generated value is immediately filled
+        # into the Secret Key input. A plain notification can leave the old
+        # value visible until the user manually refreshes the form.
+        return {"type": "ir.actions.client", "tag": "reload"}
 
     def action_copy_secret_key(self):
         self.ensure_one()

@@ -66,7 +66,6 @@
                                 <list>
                                     <field name="employee_id"/>
                                     <field name="employee_name"/>
-                                    <field name="pin"/>
                                     <field name="last_synced_at"/>
                                     <field name="sync_status" widget="badge" decoration-success="sync_status == 'success'" decoration-danger="sync_status == 'failed'"/>
                                     <field name="error_message"/>
@@ -77,7 +76,6 @@
                             <field name="attendance_log_ids">
                                 <list>
                                     <field name="employee_id"/>
-                                    <field name="pin"/>
                                     <field name="direction" widget="badge"/>
                                     <field name="check_time"/>
                                     <field name="device_timezone"/>
