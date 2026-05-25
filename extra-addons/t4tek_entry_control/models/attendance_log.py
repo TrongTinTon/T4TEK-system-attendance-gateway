@@ -3,11 +3,6 @@ from dateutil import parser as date_parser
 from odoo import api, fields, models, _, SUPERUSER_ID
 
 
-class HrEmployee(models.Model):
-    _inherit = "hr.employee"
-
-    entry_control_pin = fields.Char(string="Entry Control Device Password/PIN", copy=False, index=True)
-
 
 class EntryControlAttendanceLog(models.Model):
     _name = "entry.control.attendance.log"
@@ -15,7 +10,8 @@ class EntryControlAttendanceLog(models.Model):
     _order = "check_time desc, id desc"
 
     controller_id = fields.Many2one("entry.control.controller", ondelete="set null", index=True)
-    device_id = fields.Many2one("entry.control.device", ondelete="set null", index=True)
+    device_id = fields.Many2one("entry.control.device", string="Device Record", ondelete="set null", index=True)
+    serial_number = fields.Char(string="Device", index=True, readonly=True)
     employee_id = fields.Many2one("hr.employee", ondelete="set null", index=True)
 
     # Final operational direction used to create/update hr.attendance.
@@ -52,10 +48,46 @@ class EntryControlAttendanceLog(models.Model):
         self.env.cr.execute("ALTER TABLE IF EXISTS entry_control_attendance_log DROP CONSTRAINT IF EXISTS attendance_event_hash_unique")
         for column in ("event_hash", "pin", "direction_source", "device_direction", "device_check_type"):
             self.env.cr.execute('ALTER TABLE IF EXISTS entry_control_attendance_log DROP COLUMN IF EXISTS "%s"' % column)
+        # Backfill the canonical serial_number field on upgrades. Older builds
+        # used a device_serial_number column; copy it first, then fall back to
+        # the linked device record.
+        self.env.cr.execute("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                     WHERE table_name = 'entry_control_attendance_log'
+                       AND column_name = 'device_serial_number'
+                ) THEN
+                    UPDATE entry_control_attendance_log
+                       SET serial_number = device_serial_number
+                     WHERE (serial_number IS NULL OR serial_number = '')
+                       AND device_serial_number IS NOT NULL
+                       AND device_serial_number <> '';
+                END IF;
+            END $$;
+        """)
+        self.env.cr.execute("""
+            UPDATE entry_control_attendance_log l
+               SET serial_number = d.serial_number
+              FROM entry_control_device d
+             WHERE l.device_id = d.id
+               AND (l.serial_number IS NULL OR l.serial_number = '')
+        """)
+        self.env.cr.execute('ALTER TABLE IF EXISTS entry_control_attendance_log DROP COLUMN IF EXISTS "device_serial_number"')
+
+    @api.model
+    def _employee_code_fields(self):
+        Employee = self.env["hr.employee"]
+        # The SEM module already provides hr.employee.code (Mã nhân viên).
+        # Keep fallback names only for tolerant upgrades/custom HR modules.
+        preferred = ["code", "employee_code", "identification_id"]
+        return [fname for fname in preferred if fname in Employee._fields]
 
     @api.model
     def _employee_pin_fields(self):
         Employee = self.env["hr.employee"]
+        # SEM/Odoo HR already provides pin; entry_control_pin is only a legacy fallback.
         preferred = ["pin", "entry_control_pin"]
         return [fname for fname in preferred if fname in Employee._fields]
 
@@ -69,10 +101,17 @@ class EntryControlAttendanceLog(models.Model):
 
     @api.model
     def find_employee_by_employee_id(self, employee_id):
+        # Current API meaning: employee_id is Employee Code / Mã nhân viên,
+        # not the numeric Odoo database ID. Numeric ID fallback is kept only for
+        # tolerant upgrades from older Controller builds.
         raw = str(employee_id or "").strip()
         Employee = self.env["hr.employee"].sudo()
         if not raw:
             return Employee.browse()
+        for field_name in self._employee_code_fields():
+            emp = Employee.search([(field_name, "=", raw)], limit=1)
+            if emp:
+                return emp
         try:
             return Employee.browse(int(raw)).exists()
         except Exception:
@@ -80,12 +119,13 @@ class EntryControlAttendanceLog(models.Model):
 
     @api.model
     def find_employee_by_pin(self, pin):
-        # Legacy fallback only. New API matching should use employee_id = hr.employee.id.
+        # Legacy fallback only. New API matching should use employee_id =
+        # Employee Code / Mã nhân viên.
         pin = str(pin or "").strip()
         if not pin:
             return self.env["hr.employee"].browse()
         Employee = self.env["hr.employee"].sudo()
-        for field_name in self._employee_pin_fields():
+        for field_name in self._employee_code_fields() + self._employee_pin_fields():
             emp = Employee.search([(field_name, "=", pin)], limit=1)
             if emp:
                 return emp
@@ -162,8 +202,22 @@ class EntryControlAttendanceLog(models.Model):
         return "mixed"
 
     @api.model
-    def _find_existing_log(self, controller, device, employee, check_time, check_type, verify_type):
+    def _find_existing_log(self, controller, device, serial_number, employee, check_time, check_type, verify_type):
+        # Deduplicate by Serial Number, not by IP/device name. Device rows can be
+        # reassigned between Controllers, while the physical serial remains stable.
         domain = [
+            ("controller_id", "=", controller.id if controller else False),
+            ("serial_number", "=", serial_number or ""),
+            ("employee_id", "=", employee.id if employee else False),
+            ("check_time", "=", check_time),
+            ("check_type", "=", check_type or ""),
+            ("verify_type", "=", verify_type or ""),
+        ]
+        existing = self.sudo().search(domain, limit=1)
+        if existing:
+            return existing
+        # Upgrade fallback for logs created before serial_number existed.
+        legacy_domain = [
             ("controller_id", "=", controller.id if controller else False),
             ("device_id", "=", device.id if device else False),
             ("employee_id", "=", employee.id if employee else False),
@@ -171,12 +225,14 @@ class EntryControlAttendanceLog(models.Model):
             ("check_type", "=", check_type or ""),
             ("verify_type", "=", verify_type or ""),
         ]
-        return self.sudo().search(domain, limit=1)
+        return self.sudo().search(legacy_domain, limit=1)
 
     @api.model
     def ingest_direct_log(self, controller, data):
         data = dict(data or {})
-        serial = str(data.get("device_serial_number") or data.get("serial_number") or data.get("device_code") or data.get("deviceCode") or "").strip()
+        # API contract is strict: attendance payload must identify the device by
+        # the physical ZKTeco Serial Number in ``serial_number`` only.
+        serial = str(data.get("serial_number") or "").strip()
         api_employee_id = str(data.get("employee_id") or data.get("employeeId") or "").strip()
         legacy_pin = str(data.get("pin") or "").strip()
         check_raw = data.get("check_time") or data.get("checkTime") or data.get("time") or data.get("timestamp")
@@ -186,12 +242,24 @@ class EntryControlAttendanceLog(models.Model):
         verify_type = str(data.get("verify_type") or data.get("verifyType") or "").strip()
 
         Device = self.env["entry.control.device"].sudo()
-        device = Device.search([("controller_id", "=", controller.id), ("serial_number", "=", serial)], limit=1) if serial else Device.browse()
+        device = Device.browse()
+        if serial:
+            device = Device.search([("serial_number", "=", serial)], limit=1)
+            if not device:
+                # Create a placeholder from the attendance payload so the log is
+                # still linked by Serial Number even if /devices/report has not
+                # run yet. IP address remains informational only.
+                device = Device.upsert_from_payload(controller, {
+                    "serial_number": serial,
+                    "name": serial,
+                    "ip_address": data.get("ip_address") or data.get("ipAddress"),
+                    "status": "online",
+                })
         employee = self.find_employee_by_employee_id(api_employee_id)
         if not employee and legacy_pin:
             employee = self.find_employee_by_pin(legacy_pin)
 
-        existing = self._find_existing_log(controller, device, employee, check_dt, check_type, verify_type)
+        existing = self._find_existing_log(controller, device, serial, employee, check_dt, check_type, verify_type)
         if existing:
             return existing, True
 
@@ -201,6 +269,7 @@ class EntryControlAttendanceLog(models.Model):
         vals = {
             "controller_id": controller.id,
             "device_id": device.id if device else False,
+            "serial_number": serial,
             "employee_id": employee.id if employee else False,
             "direction": direction,
             "check_time": check_dt,

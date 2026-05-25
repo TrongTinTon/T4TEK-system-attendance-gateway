@@ -50,8 +50,8 @@
                         <page string="Devices">
                             <field name="device_ids" context="{'default_controller_id': id}">
                                 <list editable="bottom">
-                                    <field name="name"/>
                                     <field name="serial_number"/>
+                                    <field name="name"/>
                                     <field name="model"/>
                                     <field name="firmware_version"/>
                                     <field name="ip_address"/>
@@ -79,7 +79,7 @@
                                     <field name="direction" widget="badge"/>
                                     <field name="check_time"/>
                                     <field name="device_timezone"/>
-                                    <field name="device_id"/>
+                                    <field name="serial_number" string="Device"/>
                                     <field name="verify_method"/>
                                     <field name="sync_status" widget="badge"/>
                                 </list>

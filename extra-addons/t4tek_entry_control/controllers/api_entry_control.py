@@ -89,12 +89,31 @@ class EntryControlAPI(http.Controller):
         except Exception:
             return False
 
+    def _employee_code_fields(self):
+        """Return the employee-code fields available on hr.employee.
+
+        The SEM module already provides ``hr.employee.code`` as Mã nhân viên.
+        This Attendance Gateway module does not create that field; it only uses
+        it as the canonical identifier exchanged with the Controller and as the
+        ZKTeco device user ID / EnrollNumber.
+        """
+        Employee = request.env["hr.employee"].sudo()
+        preferred = ["code", "employee_code", "identification_id"]
+        return [fname for fname in preferred if fname in Employee._fields]
+
+    def _employee_code(self, employee):
+        for fname in self._employee_code_fields():
+            value = str(employee[fname] or "").strip()
+            if value:
+                return value
+        return ""
+
     def _employee_device_password_fields(self):
         """Return hr.employee fields that may store the device login password/PIN.
 
-        Latest design: `employee_id` in API payloads is the numeric Odoo
-        `hr.employee.id`. The employee `pin` is only the password/PIN used
-        when creating the user on the ZKTeco device, not the user identifier.
+        Current design: employee ``code`` / Mã nhân viên is the device user
+        identifier. The employee ``pin`` from HR/SEM is only the optional
+        device password, not the identifier.
         """
         Employee = request.env["hr.employee"].sudo()
         preferred = ["pin", "entry_control_pin"]
@@ -115,11 +134,19 @@ class EntryControlAPI(http.Controller):
         return self._employee_device_password(employee)
 
     def _find_employee_by_api_employee_id(self, employee_id):
-        """Find hr.employee by the canonical API employee_id = hr.employee.id."""
+        """Find hr.employee by API employee_id = Employee Code / Mã nhân viên.
+
+        A numeric Odoo hr.employee.id fallback is kept only to make upgrades
+        tolerant while all Controllers are moving to employee-code identifiers.
+        """
         raw = str(employee_id or "").strip()
         Employee = request.env["hr.employee"].sudo()
         if not raw:
             return Employee.browse()
+        for fname in self._employee_code_fields():
+            emp = Employee.search([(fname, "=", raw)], limit=1)
+            if emp:
+                return emp
         try:
             emp = Employee.browse(int(raw)).exists()
             if emp:
@@ -208,8 +235,10 @@ class EntryControlAPI(http.Controller):
         if error:
             return error
 
-        # Latest clean design: employee_id in this API is the canonical
-        # Odoo hr.employee.id. The employee pin is the device password/PIN.
+        # Current clean design: employee_id in this API is Employee Code /
+        # Mã nhân viên. Controller must use this value as the device user ID /
+        # ZKTeco EnrollNumber. The employee pin is only the optional device
+        # password/PIN.
         #
         # Pagination contract:
         #   request:  page/page_size or offset/limit
@@ -250,6 +279,11 @@ class EntryControlAPI(http.Controller):
         domain = []
         if "active" in Employee._fields and not include_inactive:
             domain.append(("active", "=", True))
+        employee_code_fields = self._employee_code_fields()
+        if employee_code_fields:
+            primary_code_field = employee_code_fields[0]
+            domain.append((primary_code_field, "!=", False))
+            domain.append((primary_code_field, "!=", ""))
         if last_sync_at:
             cursor_dt = self._safe_datetime_value(last_sync_at)
             if cursor_dt:
@@ -261,11 +295,18 @@ class EntryControlAPI(http.Controller):
         employees = Employee.search(domain, order="write_date asc, id asc", limit=page_size, offset=offset)
         items = []
         for emp in employees:
+            employee_code = self._employee_code(emp)
+            if not employee_code:
+                continue
             device_password = self._employee_device_password(emp)
             items.append({
-                # Canonical Odoo employee identifier. Controller should use this
-                # as the device user ID / ZKTeco EnrollNumber when syncing users.
-                "employee_id": emp.id,
+                # Canonical device identifier. Controller should use this as
+                # the ZKTeco EnrollNumber/User ID when syncing users.
+                "employee_id": employee_code,
+                "employee_code": employee_code,
+                # Keep the Odoo database ID only for diagnostics; do not use it
+                # as the device identifier.
+                "odoo_employee_id": emp.id,
                 "name": emp.name or emp.display_name,
                 # Device password/PIN. This is NOT the device user identifier.
                 "pin": device_password,
@@ -309,7 +350,7 @@ class EntryControlAPI(http.Controller):
                 Sync.create(vals)
             pending_count += 1
 
-        has_more = (offset + len(items)) < total_count
+        has_more = (offset + len(employees)) < total_count
         next_offset = offset + len(items) if has_more else False
         next_page = page + 1 if has_more else False
         controller.write({"last_sync_at": server_sync_at})
@@ -331,10 +372,11 @@ class EntryControlAPI(http.Controller):
             "sync_cursor_to": snapshot_sync_at,
             "snapshot_sync_at": snapshot_sync_at,
             "last_sync_at_received": last_sync_at or False,
+            "employee_code_fields": self._employee_code_fields(),
             "pin_fields": self._employee_device_password_fields(),
             "employee_sync_status_pending": pending_count,
             "employee_sync_status_preserved": preserved_count,
-            "note": "employee_id is hr.employee.id; pin is the device password/PIN; employees are paged and page_size is capped at 100",
+            "note": "employee_id is Employee Code / Mã nhân viên; odoo_employee_id is diagnostic only; pin is the optional device password/PIN; employees are paged and page_size is capped at 100",
         })
 
     @http.route("/api/entry_control/v1/employees/sync-status", type="http", auth="none", methods=["POST"], csrf=False)
@@ -350,10 +392,10 @@ class EntryControlAPI(http.Controller):
         failed = []
         for idx, item in enumerate(items if isinstance(items, list) else []):
             try:
-                api_employee_id = str(item.get("employee_id") or item.get("employeeId") or "").strip()
+                api_employee_id = str(item.get("employee_id") or item.get("employeeId") or item.get("employee_code") or item.get("employeeCode") or "").strip()
                 emp = self._find_employee_by_api_employee_id(api_employee_id)
                 if not emp:
-                    raise ValueError("employee_id not found on hr.employee.id: %s" % api_employee_id)
+                    raise ValueError("employee_id / employee_code not found on Employee Code / Mã nhân viên: %s" % api_employee_id)
                 vals = {
                     "controller_id": controller.id,
                     "employee_id": emp.id,
@@ -384,12 +426,24 @@ class EntryControlAPI(http.Controller):
             devices = [devices]
         Device = request.env["entry.control.device"].sudo()
         ids = []
-        for dev in devices if isinstance(devices, list) else []:
+        serial_numbers = []
+        failed = []
+        for idx, dev in enumerate(devices if isinstance(devices, list) else []):
             rec = Device.upsert_from_payload(controller, dev)
             if rec:
                 ids.append(rec.id)
+                serial_numbers.append(rec.serial_number)
+            else:
+                failed.append({"index": idx, "error": "serial_number is required; device IP is not a valid identifier"})
         controller.write({"last_sync_at": fields.Datetime.now()})
-        return self._json_response({"ok": True, "count": len(ids), "device_ids": ids})
+        return self._json_response({
+            "ok": not bool(failed),
+            "count": len(ids),
+            "device_ids": ids,
+            "serial_numbers": serial_numbers,
+            "failed": failed,
+            "note": "Device identity is Serial Number. IP address is informational only and may overlap between sites.",
+        }, 200 if not failed else 207)
 
     @http.route("/api/entry_control/v1/attendance/logs/push", type="http", auth="none", methods=["POST"], csrf=False)
     def attendance_logs_push(self, **kwargs):
