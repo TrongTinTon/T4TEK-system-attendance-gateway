@@ -1,4 +1,6 @@
 import json
+from datetime import datetime, timezone
+
 from odoo import fields, http
 from odoo.http import Response, request
 
@@ -51,6 +53,33 @@ class EntryControlAPI(http.Controller):
             return None, self._json_response({"ok": False, "error": "Invalid or expired access token"}, 401)
         controller.write({"last_heartbeat_at": fields.Datetime.now(), "status": "online", "last_error": False})
         return controller, None
+
+
+    def _safe_datetime_value(self, value):
+        """Accept Odoo datetime strings and Controller ISO datetime strings.
+
+        Controller .NET may send values like 2026-05-25T10:04:03.1234567+07:00.
+        Odoo Datetime fields store naive UTC strings, so normalize here before ORM write.
+        """
+        if not value:
+            return False
+        raw = str(value).strip()
+        if not raw:
+            return False
+        try:
+            parsed = fields.Datetime.to_datetime(raw)
+            if parsed:
+                return fields.Datetime.to_string(parsed)
+        except Exception:
+            pass
+        try:
+            iso = raw.replace("Z", "+00:00")
+            parsed = datetime.fromisoformat(iso)
+            if parsed.tzinfo:
+                parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+            return fields.Datetime.to_string(parsed)
+        except Exception:
+            return False
 
     def _employee_device_password_fields(self):
         """Return hr.employee fields that may store the device login password/PIN.
@@ -175,9 +204,10 @@ class EntryControlAPI(http.Controller):
         if "active" in Employee._fields and not include_inactive:
             domain.append(("active", "=", True))
         if last_sync_at:
-            try:
-                domain.append(("write_date", ">", fields.Datetime.to_datetime(last_sync_at)))
-            except Exception:
+            cursor_dt = self._safe_datetime_value(last_sync_at)
+            if cursor_dt:
+                domain.append(("write_date", ">", cursor_dt))
+            else:
                 # Invalid cursor should not break the controller pull; treat it as full pull.
                 domain = [(d[0], d[1], d[2]) for d in domain if d[0] != "write_date"]
 
@@ -196,6 +226,43 @@ class EntryControlAPI(http.Controller):
                 "write_date": fields.Datetime.to_string(emp.write_date),
             })
 
+        # Make Employee Sync Status visible as soon as a Controller successfully
+        # pulls the employee list, but do not overwrite an already-successful
+        # Controller report on every incremental poll. Only mark pending when the
+        # row is new or the employee changed after the last successful report.
+        Sync = request.env["entry.control.employee.sync"].sudo()
+        pending_count = 0
+        preserved_count = 0
+        for emp, item in zip(employees, items):
+            common_vals = {
+                "controller_id": controller.id,
+                "employee_id": emp.id,
+                "pin": item.get("pin") or "",
+                "employee_name": emp.name or emp.display_name,
+            }
+            rec = Sync.search([("controller_id", "=", controller.id), ("employee_id", "=", emp.id)], limit=1)
+            keep_reported_status = False
+            if rec and rec.sync_status in ("success", "skipped") and rec.last_synced_at and emp.write_date:
+                try:
+                    keep_reported_status = rec.last_synced_at >= emp.write_date
+                except Exception:
+                    keep_reported_status = False
+            if rec and keep_reported_status:
+                rec.write(common_vals)
+                preserved_count += 1
+                continue
+            vals = dict(common_vals)
+            vals.update({
+                "last_synced_at": server_sync_at,
+                "sync_status": "pending",
+                "error_message": "Sent to Controller by /api/entry_control/v1/employees; waiting for /employees/sync-status.",
+            })
+            if rec:
+                rec.write(vals)
+            else:
+                Sync.create(vals)
+            pending_count += 1
+
         controller.write({"last_sync_at": server_sync_at})
         return self._json_response({
             "ok": True,
@@ -205,6 +272,8 @@ class EntryControlAPI(http.Controller):
             "server_sync_at": fields.Datetime.to_string(server_sync_at),
             "last_sync_at_received": last_sync_at or False,
             "pin_fields": self._employee_device_password_fields(),
+            "employee_sync_status_pending": pending_count,
+            "employee_sync_status_preserved": preserved_count,
             "note": "employee_id is hr.employee.id; pin is the device password/PIN",
         })
 
@@ -230,7 +299,7 @@ class EntryControlAPI(http.Controller):
                     "employee_id": emp.id,
                     "pin": item.get("pin") or self._employee_pin(emp),
                     "employee_name": emp.name or emp.display_name,
-                    "last_synced_at": item.get("last_synced_at") or item.get("lastSyncedAt") or fields.Datetime.now(),
+                    "last_synced_at": self._safe_datetime_value(item.get("last_synced_at") or item.get("lastSyncedAt")) or fields.Datetime.now(),
                     "sync_status": item.get("sync_status") or item.get("status") or "success",
                     "error_message": item.get("error_message") or item.get("error") or "",
                 }
