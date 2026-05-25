@@ -1,6 +1,6 @@
 from datetime import timezone
 from dateutil import parser as date_parser
-from odoo import api, fields, models, _
+from odoo import api, fields, models, _, SUPERUSER_ID
 
 
 class HrEmployee(models.Model):
@@ -216,8 +216,15 @@ class EntryControlAttendanceLog(models.Model):
         return rec, False
 
     def action_sync_hr_attendance(self):
-        Attendance = self.env["hr.attendance"].sudo()
-        for rec in self:
+        # API routes are auth=none, so the request env can have no normal
+        # singleton user. hr.attendance may access env.user internally during
+        # create/write; use an explicit superuser environment to avoid
+        # "Expected singleton: res.users()" while still writing the same records.
+        super_env = api.Environment(self.env.cr, SUPERUSER_ID, dict(self.env.context or {}))
+        Attendance = super_env["hr.attendance"].sudo()
+        Log = super_env[self._name].sudo()
+        for original_rec in self:
+            rec = Log.browse(original_rec.id)
             try:
                 if not rec.employee_id:
                     raise ValueError(_("Cannot sync to Attendances: employee not found for this attendance log."))

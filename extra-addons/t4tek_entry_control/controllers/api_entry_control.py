@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 
-from odoo import fields, http
+from odoo import fields, http, SUPERUSER_ID
 from odoo.http import Response, request
 
 
@@ -51,6 +51,14 @@ class EntryControlAPI(http.Controller):
         token = self._bearer_token(data)
         if not controller.check_access_token(token):
             return None, self._json_response({"ok": False, "error": "Invalid or expired access token"}, 401)
+        # Authenticated machine API calls run under an explicit superuser env.
+        # auth=none can leave request.env.user empty and trigger singleton
+        # errors in downstream business models such as hr.attendance.
+        try:
+            request.update_env(user=SUPERUSER_ID)
+            controller = request.env["entry.control.controller"].sudo().browse(controller.id)
+        except Exception:
+            pass
         controller.write({"last_heartbeat_at": fields.Datetime.now(), "status": "online", "last_error": False})
         return controller, None
 
