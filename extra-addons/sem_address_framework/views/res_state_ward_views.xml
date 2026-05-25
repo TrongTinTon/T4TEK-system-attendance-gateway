@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+       
+        <!-- State -->
+             
+        <record id="view_country_state_list_t4tek" model="ir.ui.view">
+            <field name="name">res.country.state.list.t4tek</field>
+            <field name="model">res.country.state</field>
+            <field name="arch" type="xml">
+                <list string="State" editable="bottom">
+                    <field name="name"/>
+                    <field name="code"/>
+                    <field name="country_id" options="{'no_create': True, 'no_open': True}"/>
+                    <field name="active"/>
+                </list>
+            </field>
+        </record>
+
+        <record id="view_country_state_form_t4tek" model="ir.ui.view">
+            <field name="name">res.country.state.form.t4tek</field>
+            <field name="model">res.country.state</field>
+            <field name="arch" type="xml">
+                <form string="State">
+                    <sheet>
+                        <group>
+                            <field name="name"/>
+                            <field name="code"/>
+                            <field name="country_id" options='{"no_open": True, "no_create": True}'/>
+                            <field name="active"/>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <record id="view_country_state_search_t4tek" model="ir.ui.view">
+            <field name="name">res.country.state.search_t4tek</field>
+            <field name="model">res.country.state</field>
+            <field name="arch" type="xml">
+                <search>
+                    <field name="name"/>
+                    <field name="country_id"/>
+                    <field name="active"/>
+                    <filter string="Việt Nam" name="vietnam" domain="[('country_id.code', '=', 'VN')]"/>
+                    <separator/>
+                    <filter name="groupby_country" string="Country" context="{'group_by': 'country_id'}"/>
+                </search>
+            </field>
+        </record>
+
+        <record id="action_country_state_t4tek" model="ir.actions.act_window">
+            <field name="name">Tỉnh/Thành Phố</field>
+            <field name="res_model">res.country.state</field>
+            <field name="view_id" ref="view_country_state_list_t4tek"/>
+            <field name="search_view_id" ref="view_country_state_search_t4tek"/>
+            <field name="domain">[('country_id.code', '=', 'VN')]</field>
+            <field name="context" eval="{'default_country_id': ref('base.vn')}"/>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    Create a State
+                </p><p>
+                    Federal States belong to countries and are part of your contacts' addresses.
+                </p>
+            </field>
+        </record>
+
+        <!-- Ward -->
+        <record id="view_state_ward_list" model="ir.ui.view">
+            <field name="name">res.state.ward.list</field>
+            <field name="model">res.state.ward</field>
+            <field name="arch" type="xml">
+                <list string="State" editable="bottom">
+                    <field name="name"/>
+                    <field name="code"/>
+                    <field name="country_state_id" options="{'no_create': True, 'no_open': True}"/>
+                </list>
+            </field>
+        </record>
+
+        <record id="view_state_ward_form" model="ir.ui.view">
+            <field name="name">res.state.ward.form</field>
+            <field name="model">res.state.ward</field>
+            <field name="arch" type="xml">
+                <form string="State">
+                    <sheet>
+                        <group>
+                            <field name="name"/>
+                            <field name="code"/>
+                            <field name="country_state_id" options='{"no_open": True, "no_create": True}'/>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <record id="view_state_ward_search" model="ir.ui.view">
+            <field name="name">res.state.ward.search</field>
+            <field name="model">res.state.ward</field>
+            <field name="arch" type="xml">
+                <search>
+                    <field name="name"/>
+                    <field name="country_state_id"/>
+                    <separator/>
+                    <filter name="groupby_country" string="Country State" context="{'group_by': 'country_state_id'}"/>
+                </search>
+            </field>
+        </record>
+
+        <record id="action_state_ward" model="ir.actions.act_window">
+            <field name="name">Phường Xã</field>
+            <field name="res_model">res.state.ward</field>
+            <field name="view_id" ref="view_state_ward_list"/>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    Create a State
+                </p><p>
+                    Federal States belong to countries and are part of your contacts' addresses.
+                </p>
+            </field>
+        </record>
+
+    </data>
+</odoo>

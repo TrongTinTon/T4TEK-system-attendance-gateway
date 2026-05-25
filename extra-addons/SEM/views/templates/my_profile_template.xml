@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <template id="my_profile_page" name="Hồ sơ của tôi">
+        <html>
+            <head>
+                <meta charset="utf-8"/>
+                <meta name="viewport" content="width=device-width, initial-scale=1"/>
+                <title>Hồ sơ của tôi</title>
+                <link rel="stylesheet" href="/web/static/lib/bootstrap/css/bootstrap.css"/>
+                <style>
+                    body { background: #f8f9fa; padding: 30px; font-family: sans-serif; }
+                    .card { border-radius: 8px; margin-bottom: 20px; }
+                    .card-header { background: #f0f0f0; font-weight: 600; }
+                    .back-btn { margin-bottom: 20px; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="back-btn">
+                        <a href="/odoo" class="btn btn-secondary btn-sm">&#8592; Quay lại</a>
+                    </div>
+
+                    <h4 class="mb-4">Hồ sơ của tôi</h4>
+
+                    <t t-if="not employee">
+                        <div class="alert alert-warning">
+                            <t t-esc="error"/>
+                        </div>
+                    </t>
+
+                    <t t-if="employee">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-header">Thông tin công việc</div>
+                                    <div class="card-body">
+                                        <table class="table table-sm table-borderless mb-0">
+                                            <tr>
+                                                <td class="text-muted" style="width:45%">Họ và tên</td>
+                                                <td><t t-esc="employee.name"/></td>
+                                            </tr>
+                                            <tr>
+                                                <td class="text-muted">Chức danh</td>
+                                                <td><t t-esc="employee.job_title or ''"/></td>
+                                            </tr>
+                                            <tr>
+                                                <td class="text-muted">Phòng ban</td>
+                                                <td><t t-esc="employee.department_id.name if employee.department_id else ''"/></td>
+                                            </tr>
+                                            <tr>
+                                                <td class="text-muted">Vị trí</td>
+                                                <td><t t-esc="employee.job_id.name if employee.job_id else ''"/></td>
+                                            </tr>
+                                            <tr>
+                                                <td class="text-muted">Quản lý trực tiếp</td>
+                                                <td><t t-esc="employee.parent_id.name if employee.parent_id else ''"/></td>
+                                            </tr>
+                                            <tr>
+                                                <td class="text-muted">Huấn luyện viên</td>
+                                                <td><t t-esc="employee.coach_id.name if employee.coach_id else ''"/></td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="card">
+                                    <div class="card-header">Thông tin liên hệ</div>
+                                    <div class="card-body">
+                                        <table class="table table-sm table-borderless mb-0">
+                                            <tr>
+                                                <td class="text-muted" style="width:45%">Email công việc</td>
+                                                <td><t t-esc="employee.work_email or ''"/></td>
+                                            </tr>
+                                            <tr>
+                                                <td class="text-muted">Điện thoại</td>
+                                                <td><t t-esc="employee.work_phone or ''"/></td>
+                                            </tr>
+                                            <tr>
+                                                <td class="text-muted">Di động</td>
+                                                <td><t t-esc="employee.mobile_phone or ''"/></td>
+                                            </tr>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-12">
+                                <div class="card">
+                                    <div class="card-header">Thông tin cá nhân</div>
+                                    <div class="card-body">
+                                        <div class="row">
+                                            <div class="col-md-6">
+                                                <table class="table table-sm table-borderless mb-0">
+                                                    <tr>
+                                                        <td class="text-muted" style="width:45%">Ngày sinh</td>
+                                                        <td><t t-esc="str(employee.birthday) if employee.birthday else ''"/></td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td class="text-muted">Giới tính</td>
+                                                        <td><t t-esc="employee.gender or ''"/></td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td class="text-muted">Tình trạng hôn nhân</td>
+                                                        <td><t t-esc="employee.marital or ''"/></td>
+                                                    </tr>
+                                                </table>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <table class="table table-sm table-borderless mb-0">
+                                                    <tr>
+                                                        <td class="text-muted" style="width:45%">Địa chỉ</td>
+                                                        <td><t t-esc="employee.private_street or ''"/></td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td class="text-muted">Thành phố</td>
+                                                        <td><t t-esc="employee.private_city or ''"/></td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td class="text-muted">Tỉnh/Thành</td>
+                                                        <td><t t-esc="employee.private_state_id.name if employee.private_state_id else ''"/></td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td class="text-muted">Quốc gia</td>
+                                                        <td><t t-esc="employee.private_country_id.name if employee.private_country_id else ''"/></td>
+                                                    </tr>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </t>
+                </div>
+            </body>
+        </html>
+    </template>
+</odoo>

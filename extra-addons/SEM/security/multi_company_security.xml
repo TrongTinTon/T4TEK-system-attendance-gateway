@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Rules for models that were here have been moved to their respective modules (sem_payroll, sem_attendance) -->
+    </data>
+</odoo>

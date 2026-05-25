@@ -1,0 +1,7 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_hr_shift_all,HR Shift - All,model_hr_shift,,1,0,0,0
+access_hr_shift_manager,HR Shift - Manager,model_hr_shift,base.group_hr_manager,1,1,1,1
+access_hr_shift_hr_officer,HR Shift - HR Officer,model_hr_shift,base.group_hr_user,1,1,0,0
+access_hr_attendance_user,HR Attendance - User,model_hr_attendance,base.group_user,1,0,1,0
+access_hr_attendance_manager,HR Attendance - Manager,model_hr_attendance,base.group_hr_manager,1,1,1,1
+access_hr_attendance_hr_officer,HR Attendance - HR Officer,model_hr_attendance,base.group_hr_user,1,1,1,0

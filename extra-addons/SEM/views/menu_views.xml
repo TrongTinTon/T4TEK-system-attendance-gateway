@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+
+    <menuitem id="menu_sem_root"
+         name="SEM" 
+         sequence="0"/>
+  
+
+    <!-- <menuitem id="menu_sem_my_profile"
+        name="Hồ sơ của tôi"
+        action="action_sem_my_profile_client"
+        sequence="1"/> -->
+
+    <menuitem id="menu_sem_employee_kanban"
+        name="Nhân Viên"
+        parent="menu_sem_root"
+        action="open_view_employee_list_t4tek"
+        groups ='sem_manager'
+        sequence="2"/>
+  
+
+     
+    <!-- <menuitem id="action_sem_employee_list" model="ir.actions.act_window="
+        name="Nhân Viên
+        res_model="hr.employee
+        view_mode="list,form
+        context="{'chat_icon': True}
+        domain="[('company_id', 'in', allowed_company_ids)]
+        help" type="html="
+            <p class="o_view_nocontent_smiling_face="
+                Tạo mới nhân viên để bắt đầu quản lý.
+            </p>
+        
+   
+
+  
+    <menuitem
+        id="menu_sem_employee_user"
+        name="Nhân Viên"
+        parent="menu_sem_root"
+        action="action_sem_employee_list"
+        sequence="1"
+        groups="sem_manager" /> -->
+
+    
+
+    <menuitem id="menu_sem_department_kanban"
+        name="Phòng Ban"
+        parent="menu_sem_root"
+        action="sem_department_action_t4tek"
+        groups="sem_department"
+        sequence="1"/>
+   
+        
+       
+        <!-- MENU CHA -->
+    <menuitem id="menu_sem_category_root"
+        name="Danh Mục"
+        parent="menu_sem_root"
+        groups="sem_manager"
+        sequence="10"/>
+ 
+
+<!-- MENU CON -->
+    <menuitem id="menu_cultural_level_category"
+        name="Trình Độ Văn Hóa"
+        parent="menu_sem_category_root"
+        action="action_cultural_level_category"
+        sequence="20"/>
+   
+
+    <menuitem id="menu_people_category"
+        name="Dân Tộc"
+        parent="menu_sem_category_root"
+        action="action_people_category"
+        sequence="21"/>
+   
+
+    <menuitem id="menu_religion_category"
+        name="Tôn Giáo"
+        parent="menu_sem_category_root"
+        action="action_religion_category"
+        sequence="22"/>
+   
+    <menuitem id="menu_hr_job_category"
+        action="action_hr_job_t4tek"
+        parent="menu_sem_category_root"
+        sequence="23"/>
+
+
+    
+    <menuitem id="menu_country_state"
+        name="Tỉnh/Thành phố"
+        parent="menu_sem_category_root"
+        action="sem_address_framework.action_country_state_t4tek"
+        sequence="25"/>
+
+    <menuitem id="menu_state_ward"
+        name="Phường xã"
+        parent="menu_sem_category_root"
+        action="sem_address_framework.action_state_ward"
+        sequence="26"/>
+
+    <menuitem id="menu_hr_work_location_t4tek"
+        name="Địa điểm làm việc"
+        parent="menu_sem_category_root"
+        action="hr_work_location_action_t4tek"
+        sequence="27"/>
+
+
+
+
+
+    <!-- Menu : Báo cáo-->
+    <menuitem id="menu_sem_reporting"
+        name="Báo cáo"
+        parent="menu_sem_root"
+        groups="sem_manager"
+        sequence="90"/>
+
+        <menuitem id="menu_hr_employee_forecast_report"
+            name="Biến động nhân sự"
+            parent="menu_sem_reporting"
+            action="action_hr_employee_forecast_report"
+            sequence="10"/>
+
+    <!-- Settings -->
+    <menuitem id="menu_sem_config"
+              name="Thiết lập"
+              parent="menu_sem_root"
+              sequence="100"/>
+
+    <menuitem id="menu_sem_res_config_settings"
+              name="Thiết lập thời hạn HĐ - GP"
+              parent="menu_sem_config"
+              action="res_settings_action"
+              sequence="10"/>
+
+
+</odoo>

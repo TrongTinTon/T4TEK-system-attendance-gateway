@@ -1,0 +1,35 @@
+id,country_id:id,name,code,active
+base.state_vn_VN-44,base.vn,An Giang,VN-44,1
+base.state_vn_VN-56,base.vn,Bắc Ninh,VN-56,1
+base.state_vn_VN-04,base.vn,Cao Bằng,VN-04,1
+base.state_vn_VN-59,base.vn,Cà Mau,VN-59,1
+base.state_vn_VN-CT,base.vn,TP Cần Thơ,VN-CT,1
+base.state_vn_VN-71,base.vn,Điện Biên,VN-71,1
+base.state_vn_VN-33,base.vn,Đắk Lắk,VN-33,1
+base.state_vn_VN-DN,base.vn,TP Đà Nẵng,VN-DN,1
+base.state_vn_VN-39,base.vn,Đồng Nai,VN-39,1
+base.state_vn_VN-45,base.vn,Đồng Tháp,VN-45,1
+base.state_vn_VN-30,base.vn,Gia Lai,VN-30,1
+base.state_vn_VN-SG,base.vn,TP Hồ Chí Minh,VN-SG,1
+base.state_vn_VN-HN,base.vn,Hà Nội,VN-HN,1
+base.state_vn_VN-HP,base.vn,TP Hải Phòng,VN-HP,1
+base.state_vn_VN-23,base.vn,Hà Tĩnh,VN-23,1
+base.state_vn_VN-66,base.vn,Hưng Yên,VN-66,1
+base.state_vn_VN-34,base.vn,Khánh Hòa,VN-34,1
+base.state_vn_VN-02,base.vn,Lào Cai,VN-02,1
+base.state_vn_VN-01,base.vn,Lai Châu,VN-01,1
+base.state_vn_VN-35,base.vn,Lâm Đồng,VN-35,1
+base.state_vn_VN-09,base.vn,Lạng Sơn,VN-09,1
+base.state_vn_VN-22,base.vn,Nghệ An,VN-22,1
+base.state_vn_VN-18,base.vn,Ninh Bình,VN-18,1
+base.state_vn_VN-68,base.vn,Phú Thọ,VN-68,1
+base.state_vn_VN-13,base.vn,Quảng Ninh,VN-13,1
+base.state_vn_VN-29,base.vn,Quảng Ngãi,VN-29,1
+base.state_vn_VN-25,base.vn,Quảng Trị,VN-25,1
+base.state_vn_VN-05,base.vn,Sơn La,VN-05,1
+base.state_vn_VN-21,base.vn,Thanh Hóa,VN-21,1
+base.state_vn_VN-69,base.vn,Thái Nguyên,VN-69,1
+base.state_vn_VN-37,base.vn,Tây Ninh,VN-37,1
+base.state_vn_VN-07,base.vn,Tuyên Quang,VN-07,1
+base.state_vn_VN-26,base.vn,TP Huế,VN-26,1
+base.state_vn_VN-49,base.vn,Vĩnh Long,VN-49,1

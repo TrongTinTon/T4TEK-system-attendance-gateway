@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="sem_address_framework.SemAddressWidget" owl="1">
+        <div class="o_sem_address_widget w-100 p-3 rounded" style="background-color: #f8f9fa; border: 1px solid #dee2e6;">
+            <div class="row gx-2 gy-2">
+                <!-- Street -->
+                <div class="col-12" t-if="props.streetField">
+                    <label class="o_form_label text-muted mb-1" style="font-size: 0.85em;">Số nhà</label>
+                    <Field name="props.streetField" record="record" readonly="props.readonly"/>
+                </div>
+                <!-- Street 2 -->
+                <div class="col-12" t-if="props.street2Field">
+                    <label class="o_form_label text-muted mb-1" style="font-size: 0.85em;">Đường phố</label>
+                    <Field name="props.street2Field" record="record" readonly="props.readonly"/>
+                </div>
+                <!-- Country -->
+                <div class="col-12" t-if="props.countryField">
+                    <label class="o_form_label text-muted mb-1" style="font-size: 0.85em;">Quốc gia</label>
+                    <Field name="props.countryField" record="record" readonly="props.readonly"/>
+                </div>
+                 <!-- State -->
+                <div class="col-12 col-md-4" t-if="props.stateField">
+                    <label class="o_form_label text-muted mb-1" style="font-size: 0.85em;">Tỉnh/Thành</label>
+                    <Field name="props.stateField" record="record" domain="stateDomain" readonly="props.readonly"/>
+                </div>
+                <!-- City -->
+                <div class="col-12 col-md-5" t-if="props.cityField">
+                    <label class="o_form_label text-muted mb-1" style="font-size: 0.85em;">Phường xã</label>
+                    <Field name="props.cityField" record="record" domain="cityDomain" readonly="props.readonly"/>
+                </div>
+               
+                
+                <div class="col-12 col-md-3" t-if="props.zipField">
+                    <label class="o_form_label text-muted mb-1" style="font-size: 0.85em;">Mã bưu chính</label>
+                    <Field name="props.zipField" record="record" readonly="props.readonly"/>
+                </div>
+              
+            </div>
+        </div>
+    </t>
+</templates>

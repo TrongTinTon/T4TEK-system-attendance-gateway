@@ -1,0 +1,45 @@
+{
+    "name": "System Emloyee Management",
+    "version": "1.0",
+    "summary": "Quản lý nhân viên hệ thống",
+    "category": "SEMs",
+    "author": "GinGa GX",
+    "license": "AGPL-3",
+    "sequence": -100,
+    "depends": ["base", "web", "hr", "hr_org_chart", "hr_skills", "sem_address_framework"],
+    "data": [
+        "security/access_user.xml",
+        "security/ir.model.access.csv",
+        "security/multi_company_security.xml",
+        # "security/ir.model.access.attendance.csv",
+        "views/sem_department_views.xml",
+        # "views/employee_inherit_views.xml",
+        "views/res_config_settings_views.xml",
+        "views/sem_employee_views.xml",
+        "views/people_category_views.xml",
+        "views/religion_category_views.xml",
+        "views/hr_job_inherit_views.xml",
+        "views/cultural_level_category_views.xml",
+
+        "views/hr_department_job_popup_views.xml",
+        "views/hr_employee_forecast_report_views.xml",
+        "views/hr_job_transfer_wizard_views.xml",
+
+        "views/sem_work_location_views.xml",
+        "views/hr_resume_line_views.xml",
+        "views/hr_views_inherit.xml",
+        "views/menu_views.xml",
+        "views/templates/my_profile_template.xml",
+
+    ],
+    'assets': {
+        'web.assets_backend': [
+            'SEM/static/src/js/internal_resume_one2many_patch.js',
+            'SEM/static/src/js/hr_org_chart_patch.js',
+            'SEM/static/src/js/profile/my_profile.js',
+            'SEM/static/src/js/profile/my_profile.xml',
+        ],
+    },
+    "installable": True,
+    "application": True,
+}

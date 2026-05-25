@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+<!-- ===================== Religion Category ===================== -->
+    <record id="view_religion_category_form" model="ir.ui.view">
+        <field name="name">religion.category.form</field>
+        <field name="model">religion.category</field>
+        <field name="arch" type="xml">
+            <form string="Tôn Giáo">
+                <sheet>
+                    <group>
+                        <field name="code"/>
+                        <field name="name"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_religion_category_list" model="ir.ui.view">
+        <field name="name">religion.category.list</field>
+        <field name="model">religion.category</field>
+        <field name="arch" type="xml">
+            <list string="Tôn Giáo">
+                <field name="code"/>
+                <field name="name"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_religion_category" model="ir.actions.act_window">
+        <field name="name">Tôn Giáo</field>
+        <field name="res_model">religion.category</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>

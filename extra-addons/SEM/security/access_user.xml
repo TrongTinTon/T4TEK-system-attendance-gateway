@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="t4tek_sem_group" model="ir.module.category">
+        <field name="name">T4TEK SEM Role</field>
+        <field name="sequence">500</field>
+    </record>
+
+    <record id="t4tek_sem_group_privilege" model="res.groups.privilege">
+        <field name="name">T4TEK SEM Role</field>
+        <field name="sequence">500</field>
+        <field name="category_id" ref="SEM.t4tek_sem_group"/>
+    </record>
+    
+    <record id="sem_department" model="res.groups">
+        <field name="name">Phòng ban</field>
+        <field name="privilege_id" ref="SEM.t4tek_sem_group_privilege" />
+        <field name="implied_ids" eval="[(4, ref('hr.group_hr_manager'))]" />
+    </record>
+
+    <record id="sem_employee" model="res.groups">
+        <field name="name">Nhân sự</field>
+        <field name="privilege_id" ref="SEM.t4tek_sem_group_privilege" />
+        <field name="implied_ids" eval="[(4, ref('base.group_user')), (4, ref('hr.group_hr_manager'))]" />
+    </record>
+
+    <record id="sem_manager" model="res.groups">
+        <field name="name">Quản lý SEM</field>
+        <field name="privilege_id" ref="SEM.t4tek_sem_group_privilege" />
+        <field name="implied_ids" eval="[(4, ref('sem_department')), (4, ref('sem_employee')), (4, ref('base.group_user'))]" />
+    </record>
+
+</odoo>

@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <record id="hr_work_location_tree_view_t4tek" model="ir.ui.view">
+            <field name="name">hr.work.location.view.list.t4tek</field>
+            <field name="model">hr.work.location</field>
+            <field name="arch" type="xml">
+                <list string="Work Locations">
+                    <field name="active" column_invisible="True" />
+                    <field name="name"/>
+                    <field name="address_id"/>
+                    <field class="o_homework_icon_types d-flex flex-wrap" name="location_type"
+                           widget="hr_homeworking_radio_image" options="{'horizontal': true}"/>
+                    <field name="company_id" groups="base.group_multi_company" />
+                </list>
+            </field>
+        </record>
+        <record id="hr_work_location_form_view_t4tek" model="ir.ui.view">
+            <field name="name">hr.work.location.view.form.t4tek</field>
+            <field name="model">hr.work.location</field>
+            <field name="arch" type="xml">
+                <form string="Work Locations">
+                    <sheet>
+                        <group>
+                            <group>
+                                <field name="active" invisible="1" />
+                                <field name="name"/>
+                                <field name="allowed_address_ids" invisible="1"/>
+                                <field name="address_id" domain="[('id', 'in', allowed_address_ids)]"/>
+                                <field class="o_homework_icon_types d-flex flex-wrap" name="location_type"
+                                       widget="hr_homeworking_radio_image" options="{'horizontal': true}"/>
+                            </group>
+                            <group>
+                                <field name="company_id" groups="base.group_multi_company" />
+                                <field name="company_id" groups="!base.group_multi_company" invisible="1" />
+                            </group>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+        <record id="hr_work_location_action_t4tek" model="ir.actions.act_window">
+            <field name="name">Văn phòng</field>
+            <field name="res_model">hr.work.location</field>
+            <field name="view_mode">list,form</field>
+            <field name="domain">[('company_id', 'in', allowed_company_ids)]</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    Create a new work location
+                </p>
+            </field>
+        </record>
+
+        <!-- Link action to t4tek views -->
+        <record id="act_hr_work_location_list_view_t4tek" model="ir.actions.act_window.view">
+            <field name="sequence" eval="10"/>
+            <field name="view_mode">list</field>
+            <field name="view_id" ref="hr_work_location_tree_view_t4tek"/>
+            <field name="act_window_id" ref="hr_work_location_action_t4tek"/>
+        </record>
+        <record id="act_hr_work_location_form_view_t4tek" model="ir.actions.act_window.view">
+            <field name="sequence" eval="20"/>
+            <field name="view_mode">form</field>
+            <field name="view_id" ref="hr_work_location_form_view_t4tek"/>
+            <field name="act_window_id" ref="hr_work_location_action_t4tek"/>
+        </record>
+    </data>
+</odoo>

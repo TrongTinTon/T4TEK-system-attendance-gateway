@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="sem_config_settings_view_form_t4tek" model="ir.ui.view">
+        <field name="name">sem.config.settings.view.form</field>
+        <field name="model">sem.config.settings</field>
+        <field name="priority" eval="99"/>
+        <field name="arch" type="xml">
+            <form string="Cấu hình chung" class="oe_form_configuration" create="false" edit="1" delete="false">
+                <style>
+                    .o_control_panel { display: none !important; }
+                </style>
+                <header>
+                    <button string="Lưu" type="object" name="execute" class="oe_highlight" />
+                </header>
+                <sheet>
+                    <group>
+                        <field name="company_id" options="{'no_create': True}" invisible="1"/>
+                    </group>
+                    <div class="o_setting_container">
+                        <div class="o_setting_box">
+                            <div class="o_horizontal_separator">Cấu hình Phiên Bản Nhân Viên</div>
+                            <div class="row mt16 o_settings_container">
+                                <div class="col-12 col-lg-6 o_setting_box">
+                                    <div class="o_setting_left_pane">
+                                        <field name="require_version_approval"/>
+                                    </div>
+                                    <div class="o_setting_right_pane">
+                                        <label for="require_version_approval"/>
+                                        <div class="text-muted">
+                                            Bắt buộc duyệt khi tạo phiên bản mới của nhân viên.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="o_horizontal_separator">Cấu hình thông báo hết hạn</div>
+                            <div class="row mt16 o_settings_container">
+                                <div class="col-12 col-lg-6 o_setting_box">
+                                    <div class="o_setting_right_pane">
+                                        <label for="contract_expiration_notice_period"/>
+                                        <div class="text-muted">
+                                            Số ngày báo trước khi hợp đồng hết hạn.
+                                        </div>
+                                        <div class="content-group">
+                                            <div class="mt16">
+                                                <field name="contract_expiration_notice_period" class="oe_inline"/>
+                                                <span> Ngày</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-12 col-lg-6 o_setting_box">
+                                    <div class="o_setting_right_pane">
+                                        <label for="work_permit_expiration_notice_period"/>
+                                        <div class="text-muted">
+                                            Số ngày báo trước khi giấy phép lao động hết hạn.
+                                        </div>
+                                        <div class="content-group">
+                                            <div class="mt16">
+                                                <field name="work_permit_expiration_notice_period" class="oe_inline"/>
+                                                <span> Ngày</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="res_settings_action" model="ir.actions.act_window">
+        <field name="name">Cấu hình chung</field>
+        <field name="res_model">sem.config.settings</field>
+        <field name="view_mode">form</field>
+        <field name="target">current</field>
+        <field name="view_id" ref="sem_config_settings_view_form_t4tek"/>
+    </record>
+
+</odoo>

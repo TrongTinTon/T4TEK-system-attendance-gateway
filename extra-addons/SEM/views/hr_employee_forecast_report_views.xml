@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_hr_employee_forecast_report_pivot" model="ir.ui.view">
+        <field name="name">hr.employee.forecast.report.pivot</field>
+        <field name="model">hr.employee.forecast.report</field>
+        <field name="arch" type="xml">
+            <pivot string="Biến động nhân sự" sample="1">
+                <field name="date" interval="month" type="col"/>
+                <field name="department_id" type="row"/>
+                <field name="employee_count" type="measure"/>
+            </pivot>
+        </field>
+    </record>
+
+    <record id="view_hr_employee_forecast_report_graph" model="ir.ui.view">
+        <field name="name">hr.employee.forecast.report.graph</field>
+        <field name="model">hr.employee.forecast.report</field>
+        <field name="arch" type="xml">
+            <graph string="Biến động nhân sự" type="line" sample="1">
+                <field name="date" interval="month"/>
+                <field name="employee_count" type="measure"/>
+            </graph>
+        </field>
+    </record>
+
+    <record id="view_hr_employee_forecast_report_search" model="ir.ui.view">
+        <field name="name">hr.employee.forecast.report.search</field>
+        <field name="model">hr.employee.forecast.report</field>
+        <field name="arch" type="xml">
+            <search string="Biến động nhân sự">
+                <field name="employee_id"/>
+                <field name="department_id"/>
+                <field name="job_id"/>
+                <filter string="Tháng hiện tại" name="current_month" 
+                        domain="[('month', '=', context_today().strftime('%m')), ('year', '=', context_today().strftime('%Y'))]"/>
+                <separator/>
+                <filter string="Chính thức" name="official" domain="[('employee_type', '=', 'official')]"/>
+                <filter string="Thử việc" name="probation" domain="[('employee_type', '=', 'probation')]"/>
+                <separator/>
+                <filter string="Ngày" name="date" date="date"/>
+                <group>
+                    <filter string="Phòng ban" name="group_department" context="{'group_by':'department_id'}"/>
+                    <filter string="Chức danh" name="group_job" context="{'group_by':'job_id'}"/>
+                    <filter string="Loại nhân viên" name="group_type" context="{'group_by':'employee_type'}"/>
+                    <filter string="Tuần" name="group_week" context="{'group_by':'date:week'}"/>
+                    <filter string="Tháng" name="group_month" context="{'group_by':'date:month'}"/>
+                </group>
+                <searchpanel>
+                    <field name="year" icon="fa-calendar" enable_counters="1" select="one"/>
+                    <field name="employee_type" icon="fa-users" enable_counters="1" select="one" string="Loại nhân viên"/>
+                    <field name="month" icon="fa-filter" enable_counters="1" select="one"/>
+                    <field name="week" icon="fa-filter" enable_counters="1" select="one"/>
+                </searchpanel>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_hr_employee_forecast_report" model="ir.actions.act_window">
+        <field name="name">Biến động nhân sự</field>
+        <field name="res_model">hr.employee.forecast.report</field>
+        <field name="view_mode">graph,pivot</field>
+        <field name="context">{'search_default_group_month': 1}</field>
+        <field name="search_view_id" ref="view_hr_employee_forecast_report_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Xem báo cáo biến động nhân sự theo thời gian.
+            </p>
+        </field>
+    </record>
+
+</odoo>

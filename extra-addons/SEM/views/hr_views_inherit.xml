@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+
+    <record id="sem_employee_view_form_inherit_org_chart_t4tek" model="ir.ui.view">
+        <field name="name">sem.employee.view.form.inherit.org_chart</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="SEM.view_employee_form_t4tek"/>
+        <field name="arch" type="xml">
+            <div id="o_employee_org_chart" position="inside">
+                <field name="subordinate_ids" invisible="1"/>
+                <div invisible="not subordinate_ids and (not parent_id or parent_id == id)" class="o_horizontal_separator mt-4 mb-3 text-uppercase fw-bolder small">
+                    Organization Chart
+                    <a name="%(hr_org_chart.action_hr_employee_org_chart)d"
+                        type="action"
+                        role="button"
+                        class="float-end me-2 cursor-pointer"
+                        context="{'hierarchy_res_id': id}">
+                        <i class="fa fa-share-alt fa-rotate-90 ms-1 mt-1" role="img" aria-label="Full Chart"/>
+                        Full Chart
+                    </a>
+                </div>
+                <div invisible="subordinate_ids or (parent_id and not parent_id == id)" class="o_horizontal_separator mt-4 mb-3 text-uppercase fw-bolder small">
+                    Organization Chart
+                </div>
+                <field name="child_ids" class="position-relative w-100" widget="hr_org_chart" readonly="1" nolabel="1"/>
+            </div>
+        </field>
+    </record>
+
+    <record id="sem_employee_view_pivot_inherit_org_chart" model="ir.ui.view">
+        <field name="name">sem.employee.view.pivot.inherit.org_chart</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="SEM.sem_employee_view_pivot_t4tek"/>
+        <field name="arch" type="xml">
+            <xpath expr="//pivot" position="inside">
+                <field name="department_color" type="measure" invisible="1"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="sem_employee_view_graph_inherit_org_chart" model="ir.ui.view">
+        <field name="name">sem.employee.view.graph.inherit.org_chart</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="SEM.sem_employee_view_graph_t4tek"/>
+        <field name="arch" type="xml">
+            <xpath expr="//graph" position="inside">
+                <field name="department_color" type="measure" invisible="1"/>
+            </xpath>
+        </field>
+    </record>
+
+   
+</odoo>

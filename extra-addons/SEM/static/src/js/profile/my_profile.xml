@@ -1,0 +1,373 @@
+<?xml version="1.0" encoding="utf-8"?>
+<templates xml:space="preserve">
+<t t-name="SEM.MyProfile">
+<div class="o_action o_form_view" style="overflow:auto; padding:24px;">
+
+    <!-- Loading -->
+    <div t-if="state.loading" class="text-center mt-5">
+        <i class="fa fa-spinner fa-spin fa-2x"/>
+        <p class="mt-2 text-muted">Đang tải...</p>
+    </div>
+
+    <!-- Error -->
+    <div t-elif="state.error" class="alert alert-warning mt-4">
+        <t t-esc="state.error"/>
+    </div>
+
+    <!-- Content -->
+    <t t-elif="state.profile">
+        <div class="o_form_sheet_bg">
+            <div class="o_form_sheet">
+
+                <!-- ── Header: avatar + tên ── -->
+                <div class="d-flex align-items-center mb-4 gap-4">
+                    <div class="position-relative" style="width:96px;height:96px;flex-shrink:0;">
+                        <img t-if="state.profile.image"
+                            t-att-src="'data:image/png;base64,' + state.profile.image"
+                            class="rounded-circle border"
+                            style="width:96px;height:96px;object-fit:cover;"/>
+                        <div t-else="" class="rounded-circle border bg-light d-flex align-items-center justify-content-center"
+                            style="width:96px;height:96px;font-size:32px;color:#aaa;">
+                            <i class="fa fa-user"/>
+                        </div>
+                        <button class="btn btn-sm btn-light position-absolute bottom-0 end-0 rounded-circle p-1 border"
+                            style="width:28px;height:28px;line-height:1;"
+                            title="Đổi ảnh đại diện"
+                            t-on-click="triggerAvatarUpload">
+                            <i class="fa fa-camera" style="font-size:12px;"/>
+                        </button>
+                        <input type="file" id="sem_avatar_input" accept="image/*"
+                            style="display:none;" t-on-change="onAvatarChange"/>
+                    </div>
+                    <div>
+                        <h2 class="mb-0"><t t-esc="state.profile.name"/></h2>
+                        <div class="text-muted"><t t-esc="state.profile.job_title"/></div>
+                        <div class="text-muted small"><t t-esc="state.profile.code"/></div>
+                    </div>
+                </div>
+
+                <!-- ── Tabs ── -->
+                <ul class="nav nav-tabs mb-3">
+                    <li class="nav-item">
+                        <a class="nav-link" t-att-class="state.activeTab === 'work' ? 'active' : ''"
+                            t-on-click="() => this.setTab('work')" href="#">Thông tin công việc</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" t-att-class="state.activeTab === 'personal' ? 'active' : ''"
+                            t-on-click="() => this.setTab('personal')" href="#">Thông tin cá nhân</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" t-att-class="state.activeTab === 'duty' ? 'active' : ''"
+                            t-on-click="() => this.setTab('duty')" href="#">Chức năng &amp; Nhiệm vụ</a>
+                    </li>
+                </ul>
+
+                <!-- ══════════════════════════════════════════
+                     TAB 1: THÔNG TIN CÔNG VIỆC (readonly)
+                ══════════════════════════════════════════ -->
+                <div t-if="state.activeTab === 'work'">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <table class="table table-sm table-borderless">
+                                <tbody>
+                                    <tr>
+                                        <td class="text-muted fw-semibold" style="width:45%">Phòng ban</td>
+                                        <td><t t-esc="state.profile.department"/></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted fw-semibold">Chức vụ</td>
+                                        <td><t t-esc="state.profile.job"/></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted fw-semibold">Quản lý phòng ban</td>
+                                        <td><t t-esc="state.profile.manager"/></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted fw-semibold">Quản lý trực tiếp</td>
+                                        <td><t t-esc="state.profile.parent"/></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted fw-semibold">Huấn luyện viên</td>
+                                        <td><t t-esc="state.profile.coach"/></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <table class="table table-sm table-borderless">
+                                <tbody>
+                                    <tr>
+                                        <td class="text-muted fw-semibold" style="width:45%">Email công việc</td>
+                                        <td><t t-esc="state.profile.work_email"/></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted fw-semibold">Điện thoại</td>
+                                        <td><t t-esc="state.profile.work_phone"/></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted fw-semibold">Di động</td>
+                                        <td><t t-esc="state.profile.mobile_phone"/></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted fw-semibold">Khu vực</td>
+                                        <td><t t-esc="state.profile.address"/></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted fw-semibold">Văn phòng</td>
+                                        <td><t t-esc="state.profile.work_location"/></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted fw-semibold">Ngày thử việc</td>
+                                        <td><t t-esc="state.profile.probation_date"/></td>
+                                    </tr>
+                                    <tr>
+                                        <td class="text-muted fw-semibold">Ngày chính thức</td>
+                                        <td><t t-esc="state.profile.start_date"/></td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ══════════════════════════════════════════
+                     TAB 2: THÔNG TIN CÁ NHÂN (editable)
+                ══════════════════════════════════════════ -->
+                <div t-if="state.activeTab === 'personal'">
+
+                    <!-- Thông tin cơ bản -->
+                    <h6 class="text-muted border-bottom pb-1 mb-3">Thông tin cơ bản</h6>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Giới tính</label>
+                            <select class="form-select form-select-sm"
+                                t-on-change="(ev) => this.onEditChange('gender', ev)">
+                                <option value="">-- Chọn --</option>
+                                <t t-foreach="state.profile.gender_options" t-as="opt" t-key="opt[0]">
+                                    <option t-att-value="opt[0]"
+                                        t-att-selected="state.edit.gender === opt[0]">
+                                        <t t-esc="opt[1]"/>
+                                    </option>
+                                </t>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Ngày sinh</label>
+                            <input type="date" class="form-control form-control-sm"
+                                t-att-value="state.edit.birthday"
+                                t-on-change="(ev) => this.onEditChange('birthday', ev)"/>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Nơi sinh</label>
+                            <input type="text" class="form-control form-control-sm"
+                                t-att-value="state.edit.place_of_birth"
+                                t-on-change="(ev) => this.onEditChange('place_of_birth', ev)"/>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Quê quán</label>
+                            <input type="text" class="form-control form-control-sm"
+                                t-att-value="state.edit.place_of_origin"
+                                t-on-change="(ev) => this.onEditChange('place_of_origin', ev)"/>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Tình trạng hôn nhân</label>
+                            <select class="form-select form-select-sm"
+                                t-on-change="(ev) => this.onEditChange('marital', ev)">
+                                <option value="">-- Chọn --</option>
+                                <t t-foreach="state.profile.marital_options" t-as="opt" t-key="opt[0]">
+                                    <option t-att-value="opt[0]"
+                                        t-att-selected="state.edit.marital === opt[0]">
+                                        <t t-esc="opt[1]"/>
+                                    </option>
+                                </t>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Số con</label>
+                            <input type="number" class="form-control form-control-sm" min="0"
+                                t-att-value="state.edit.children"
+                                t-on-change="(ev) => this.onEditChange('children', ev)"/>
+                        </div>
+                    </div>
+
+                    <!-- CCCD -->
+                    <h6 class="text-muted border-bottom pb-1 mb-3">Căn cước công dân</h6>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Số CCCD</label>
+                            <input type="text" class="form-control form-control-sm"
+                                t-att-value="state.edit.identification_id"
+                                t-on-change="(ev) => this.onEditChange('identification_id', ev)"/>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Ngày cấp</label>
+                            <input type="date" class="form-control form-control-sm"
+                                t-att-value="state.edit.date_issuance_identity_card"
+                                t-on-change="(ev) => this.onEditChange('date_issuance_identity_card', ev)"/>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Nơi cấp</label>
+                            <input type="text" class="form-control form-control-sm"
+                                t-att-value="state.edit.local_issuance_identity_card"
+                                t-on-change="(ev) => this.onEditChange('local_issuance_identity_card', ev)"/>
+                        </div>
+                    </div>
+
+                    <!-- Liên hệ cá nhân -->
+                    <h6 class="text-muted border-bottom pb-1 mb-3">Liên hệ cá nhân</h6>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">SĐT cá nhân</label>
+                            <input type="text" class="form-control form-control-sm"
+                                t-att-value="state.edit.private_phone"
+                                t-on-change="(ev) => this.onEditChange('private_phone', ev)"/>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Email cá nhân</label>
+                            <input type="email" class="form-control form-control-sm"
+                                t-att-value="state.edit.private_email"
+                                t-on-change="(ev) => this.onEditChange('private_email', ev)"/>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Liên hệ khẩn cấp</label>
+                            <input type="text" class="form-control form-control-sm"
+                                t-att-value="state.edit.emergency_contact"
+                                t-on-change="(ev) => this.onEditChange('emergency_contact', ev)"/>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">SĐT khẩn cấp</label>
+                            <input type="text" class="form-control form-control-sm"
+                                t-att-value="state.edit.emergency_phone"
+                                t-on-change="(ev) => this.onEditChange('emergency_phone', ev)"/>
+                        </div>
+                    </div>
+
+                    <!-- Địa chỉ thường trú -->
+                    <h6 class="text-muted border-bottom pb-1 mb-3">Địa chỉ thường trú</h6>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Số/Ngõ</label>
+                            <input type="text" class="form-control form-control-sm"
+                                t-att-value="state.edit.private_street"
+                                t-on-change="(ev) => this.onEditChange('private_street', ev)"/>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Đường</label>
+                            <input type="text" class="form-control form-control-sm"
+                                t-att-value="state.edit.private_street2"
+                                t-on-change="(ev) => this.onEditChange('private_street2', ev)"/>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Tỉnh/Thành</label>
+                            <select class="form-select form-select-sm" t-on-change="onPrivateStateChange">
+                                <option value="">-- Chọn --</option>
+                                <t t-foreach="state.privateStates" t-as="s" t-key="s.id">
+                                    <option t-att-value="s.id"
+                                        t-att-selected="state.edit.private_state_id === s.id">
+                                        <t t-esc="s.name"/>
+                                    </option>
+                                </t>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Phường/Xã</label>
+                            <select class="form-select form-select-sm" t-on-change="onPrivateWardChange">
+                                <option value="">-- Chọn --</option>
+                                <t t-foreach="state.privateWards" t-as="w" t-key="w.id">
+                                    <option t-att-value="w.id"
+                                        t-att-selected="state.edit.private_state_ward_id === w.id">
+                                        <t t-esc="w.name"/>
+                                    </option>
+                                </t>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Mã bưu chính</label>
+                            <input type="text" class="form-control form-control-sm"
+                                t-att-value="state.edit.private_zip"
+                                t-on-change="(ev) => this.onEditChange('private_zip', ev)"/>
+                        </div>
+                    </div>
+
+                    <!-- Địa chỉ tạm trú -->
+                    <h6 class="text-muted border-bottom pb-1 mb-3">Địa chỉ tạm trú</h6>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Số/Ngõ</label>
+                            <input type="text" class="form-control form-control-sm"
+                                t-att-value="state.edit.temp_street"
+                                t-on-change="(ev) => this.onEditChange('temp_street', ev)"/>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold">Đường</label>
+                            <input type="text" class="form-control form-control-sm"
+                                t-att-value="state.edit.temp_street2"
+                                t-on-change="(ev) => this.onEditChange('temp_street2', ev)"/>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Tỉnh/Thành</label>
+                            <select class="form-select form-select-sm" t-on-change="onTempStateChange">
+                                <option value="">-- Chọn --</option>
+                                <t t-foreach="state.tempStates" t-as="s" t-key="s.id">
+                                    <option t-att-value="s.id"
+                                        t-att-selected="state.edit.temp_state_id === s.id">
+                                        <t t-esc="s.name"/>
+                                    </option>
+                                </t>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Phường/Xã</label>
+                            <select class="form-select form-select-sm" t-on-change="onTempWardChange">
+                                <option value="">-- Chọn --</option>
+                                <t t-foreach="state.tempWards" t-as="w" t-key="w.id">
+                                    <option t-att-value="w.id"
+                                        t-att-selected="state.edit.temp_state_ward_id === w.id">
+                                        <t t-esc="w.name"/>
+                                    </option>
+                                </t>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold">Mã bưu chính</label>
+                            <input type="text" class="form-control form-control-sm"
+                                t-att-value="state.edit.temp_zip"
+                                t-on-change="(ev) => this.onEditChange('temp_zip', ev)"/>
+                        </div>
+                    </div>
+
+                    <!-- Nút Lưu -->
+                    <div class="d-flex justify-content-end">
+                        <button class="btn btn-primary" t-on-click="save" t-att-disabled="state.saving">
+                            <i t-if="state.saving" class="fa fa-spinner fa-spin me-1"/>
+                            <t t-if="state.saving">Đang lưu...</t>
+                            <t t-else="">Lưu thông tin</t>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- ══════════════════════════════════════════
+                     TAB 3: CHỨC NĂNG & NHIỆM VỤ (readonly)
+                ══════════════════════════════════════════ -->
+                <div t-if="state.activeTab === 'duty'">
+                    <div class="mb-4">
+                        <h6 class="text-muted border-bottom pb-1 mb-2">Mô tả công việc</h6>
+                        <div t-out="state.profile.job_description or '&lt;em class=&quot;text-muted&quot;&gt;Chưa có mô tả&lt;/em&gt;'"/>
+                    </div>
+                    <div class="mb-4">
+                        <h6 class="text-muted border-bottom pb-1 mb-2">Chức năng</h6>
+                        <div t-out="state.profile.onus or '&lt;em class=&quot;text-muted&quot;&gt;Chưa có thông tin&lt;/em&gt;'"/>
+                    </div>
+                    <div>
+                        <h6 class="text-muted border-bottom pb-1 mb-2">Nhiệm vụ</h6>
+                        <div t-out="state.profile.missions or '&lt;em class=&quot;text-muted&quot;&gt;Chưa có thông tin&lt;/em&gt;'"/>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </t>
+
+</div>
+</t>
+</templates>
