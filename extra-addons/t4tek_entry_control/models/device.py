@@ -1,4 +1,4 @@
-from odoo import api, fields, models, _
+from odoo import api, fields, models
 
 
 class EntryControlDevice(models.Model):
@@ -6,148 +6,61 @@ class EntryControlDevice(models.Model):
     _description = "Entry Control Device"
     _order = "last_seen_at desc, id desc"
 
-    active = fields.Boolean(default=True, index=True)
     controller_id = fields.Many2one("entry.control.controller", required=True, ondelete="cascade", index=True)
-    controller_code = fields.Char(related="controller_id.controller_code", store=True, index=True)
-    device_code = fields.Char(required=True, index=True, copy=False)
-    name = fields.Char(string="Device Name", required=True)
-    device_name = fields.Char(string="Device Name (reported)")
-    device_type = fields.Selection([
-        ("zkteco", "ZKTeco"),
-        ("zk_access", "ZKTeco Access/Attendance"),
-        ("senseface", "SenseFace"),
-        ("camera", "Camera"),
-        ("other", "Other"),
-    ], default="senseface", required=True)
+    name = fields.Char(required=True)
+    serial_number = fields.Char(required=True, index=True)
+    model = fields.Char()
+    firmware_version = fields.Char(string="Firmware")
     ip_address = fields.Char()
     port = fields.Integer(default=4370)
     machine_no = fields.Integer(default=1)
-    comm_mode = fields.Selection([("tcp", "TCP/IP")], default="tcp")
-    serial_number = fields.Char(index=True)
-    model = fields.Char()
-    firmware_version = fields.Char()
-    is_online = fields.Boolean(default=False, index=True)
-    last_seen_at = fields.Datetime(readonly=True)
-    last_online_at = fields.Datetime(readonly=True)
-    last_offline_at = fields.Datetime(readonly=True)
-    last_diagnostic_at = fields.Datetime(readonly=True)
-    last_user_pull_at = fields.Datetime(readonly=True)
-    last_attendance_pull_at = fields.Datetime(readonly=True)
-    last_fingerprint_pull_at = fields.Datetime(readonly=True)
-    last_error = fields.Text(readonly=True)
-    operational_state = fields.Selection([
+    comm_mode = fields.Selection([
+        ("tcp", "TCP/IP"),
+        ("pull", "PULL"),
+        ("usb", "USB"),
+        ("unknown", "Unknown"),
+    ], default="tcp", required=True)
+    status = fields.Selection([
         ("online", "Online"),
         ("offline", "Offline"),
-        ("error", "Error"),
-        ("inactive", "Inactive"),
-    ], string="Status", compute="_compute_operational_state", store=False)
-    status_summary = fields.Char(string="Status Summary", compute="_compute_operational_state")
-    assignment_count = fields.Integer(compute="_compute_assignment_count")
+        ("deactive", "Deactive"),
+    ], default="offline", index=True)
+    active = fields.Boolean(default=True, index=True)
+    last_seen_at = fields.Datetime(readonly=True)
 
     _sql_constraints = [
-        ("device_code_controller_unique", "unique(controller_id, device_code)", "Device code must be unique per controller."),
+        ("controller_serial_unique", "unique(controller_id, serial_number)", "Serial Number must be unique per Controller."),
     ]
-
-
-    @api.depends("active", "is_online", "last_error", "last_seen_at")
-    def _compute_operational_state(self):
-        for rec in self:
-            if not rec.active:
-                rec.operational_state = "inactive"
-                rec.status_summary = _("Inactive")
-            elif rec.last_error:
-                rec.operational_state = "error"
-                rec.status_summary = rec.last_error
-            elif rec.is_online:
-                rec.operational_state = "online"
-                rec.status_summary = _("Online")
-            else:
-                rec.operational_state = "offline"
-                rec.status_summary = _("Offline")
-
-    @api.depends("device_code")
-    def _compute_assignment_count(self):
-        Assignment = self.env["entry.control.assignment"].sudo()
-        for rec in self:
-            rec.assignment_count = Assignment.search_count([("device_id", "=", rec.id)])
-
-    def action_auto_sync_all_users(self):
-        total = 0
-        User = self.env["entry.control.user"].sudo()
-        users = User.search([])
-        for device in self:
-            if not device.active or device.controller_id.blocked or not device.controller_id.approved or device.controller_id.registration_status != "approved":
-                continue
-            for user in users:
-                if user.is_deleted:
-                    cmd_type = "delete_user"
-                elif not user.is_active:
-                    cmd_type = "disable_user"
-                else:
-                    # A device report means this is a sync target. For active users,
-                    # the safe first command is create_user, not update_user.
-                    cmd_type = "create_user"
-                total += user.action_auto_sync_to_all_devices(command_type=cmd_type, only_device=device)
-        return {
-            "type": "ir.actions.client",
-            "tag": "display_notification",
-            "params": {
-                "title": _("Auto sync queued"),
-                "message": _("Queued %s command(s) for selected device(s).") % total,
-                "type": "success",
-                "sticky": False,
-            },
-        }
-
-
-    @api.model
-    def _normalize_device_type(self, value):
-        value = (value or "zkteco").strip().lower()
-        aliases = {
-            "zk": "zkteco",
-            "zk_access": "zk_access",
-            "zkteco": "zkteco",
-            "senseface": "senseface",
-            "iface": "senseface",
-            "camera": "camera",
-        }
-        return aliases.get(value, "other")
 
     @api.model
     def upsert_from_payload(self, controller, payload):
-        code = (payload.get("device_code") or payload.get("code") or "").strip()
-        if not code:
+        payload = dict(payload or {})
+        serial = str(payload.get("serial_number") or payload.get("serialNumber") or "").strip()
+        if not serial:
+            serial = str(payload.get("device_serial_number") or payload.get("deviceSerialNumber") or "").strip()
+        if not serial:
+            serial = str(payload.get("device_code") or payload.get("deviceCode") or payload.get("code") or "").strip()
+        if not serial:
             return self.browse()
+        connection_status = str(payload.get("connection_status") or payload.get("status") or "offline").strip().lower()
+        active_status = str(payload.get("active_status") or "active").strip().lower()
         vals = {
             "controller_id": controller.id,
-            "device_code": code,
-            "name": payload.get("device_name") or payload.get("name") or code,
-            "device_name": payload.get("device_name") or payload.get("name") or code,
-            "device_type": self._normalize_device_type(payload.get("device_type") or payload.get("type") or "zkteco"),
+            "serial_number": serial,
+            "name": payload.get("name") or payload.get("device_name") or serial,
+            "model": payload.get("model"),
+            "firmware_version": payload.get("firmware_version") or payload.get("firmware"),
             "ip_address": payload.get("ip_address"),
             "port": int(payload.get("port") or 4370),
             "machine_no": int(payload.get("machine_no") or 1),
-            "serial_number": payload.get("serial_number"),
-            "model": payload.get("model"),
-            "firmware_version": payload.get("firmware_version"),
-            "active": payload.get("is_active", True),
-            "is_online": bool(payload.get("is_online", False)),
+            "comm_mode": payload.get("comm_mode") if payload.get("comm_mode") in ("tcp", "pull", "usb", "unknown") else "tcp",
+            "status": "deactive" if active_status == "deactive" else ("online" if connection_status == "online" else "offline"),
+            "active": active_status != "deactive",
             "last_seen_at": fields.Datetime.now(),
-            "last_error": payload.get("last_error"),
         }
-        if vals["is_online"]:
-            vals["last_online_at"] = fields.Datetime.now()
-        else:
-            vals["last_offline_at"] = fields.Datetime.now()
-
-        device = self.sudo().search([("controller_id", "=", controller.id), ("device_code", "=", code)], limit=1)
-        was_existing = bool(device)
-        was_active = bool(device.active) if device else False
+        device = self.sudo().search([("controller_id", "=", controller.id), ("serial_number", "=", serial)], limit=1)
         if device:
-            device.sudo().write(vals)
+            device.write(vals)
         else:
-            device = self.sudo().create(vals)
-
-        # Device report is inventory/status only. A Controller that adds a new
-        # local device should apply cached desired state on the Controller side.
+            device = self.create(vals)
         return device

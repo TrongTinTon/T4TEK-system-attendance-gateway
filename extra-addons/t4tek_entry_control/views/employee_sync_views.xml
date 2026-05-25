@@ -1,0 +1,39 @@
+<odoo>
+    <record id="view_entry_control_employee_sync_tree" model="ir.ui.view">
+        <field name="name">entry.control.employee.sync.list</field>
+        <field name="model">entry.control.employee.sync</field>
+        <field name="arch" type="xml">
+            <list string="Employee Sync Status">
+                <field name="controller_id"/>
+                <field name="employee_id"/>
+                <field name="employee_name"/>
+                <field name="pin"/>
+                <field name="last_synced_at"/>
+                <field name="sync_status" widget="badge" decoration-success="sync_status == 'success'" decoration-danger="sync_status == 'failed'" decoration-muted="sync_status == 'skipped'"/>
+                <field name="error_message"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_entry_control_employee_sync_search" model="ir.ui.view">
+        <field name="name">entry.control.employee.sync.search</field>
+        <field name="model">entry.control.employee.sync</field>
+        <field name="arch" type="xml">
+            <search string="Employee Sync Status">
+                <field name="controller_id"/>
+                <field name="employee_id"/>
+                <field name="employee_name"/>
+                <field name="pin"/>
+                <filter name="filter_sync_success" string="Success" domain="[('sync_status','=','success')]"/>
+                <filter name="filter_sync_failed" string="Failed" domain="[('sync_status','=','failed')]"/>
+                <filter name="filter_sync_pending" string="Pending" domain="[('sync_status','=','pending')]"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_entry_control_employee_sync" model="ir.actions.act_window">
+        <field name="name">Employee Sync Status</field>
+        <field name="res_model">entry.control.employee.sync</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>

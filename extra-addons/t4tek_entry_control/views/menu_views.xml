@@ -1,52 +1,7 @@
-<?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <menuitem id="menu_entry_control_root"
-              name="Entry Control"
-              sequence="30"/>
-
-    <menuitem id="menu_entry_control_operation"
-              name="Operations"
-              parent="menu_entry_control_root"
-              sequence="10"/>
-
-    <menuitem id="menu_entry_control_users"
-              name="Device Users"
-              parent="menu_entry_control_operation"
-              action="action_entry_control_user"
-              sequence="10"/>
-
-    <menuitem id="menu_entry_control_user_device_status"
-              name="User Sync Status"
-              parent="menu_entry_control_operation"
-              action="action_entry_control_user_device_status"
-              sequence="15"/>
-
-    <menuitem id="menu_entry_control_fingerprints"
-              name="Fingerprints"
-              parent="menu_entry_control_operation"
-              action="action_entry_control_fingerprint"
-              sequence="20"/>
-
-    <menuitem id="menu_entry_control_attendance"
-              name="Attendance Logs"
-              parent="menu_entry_control_operation"
-              action="action_entry_control_attendance_log"
-              sequence="30"/>
-
-    <menuitem id="menu_entry_control_integration"
-              name="Integration"
-              parent="menu_entry_control_root"
-              sequence="20"/>
-
-    <menuitem id="menu_entry_control_controllers"
-              name="Controllers"
-              parent="menu_entry_control_integration"
-              action="action_entry_control_controller"
-              sequence="10"/>
-
-    <menuitem id="menu_entry_control_devices"
-              name="Devices"
-              parent="menu_entry_control_integration"
-              action="action_entry_control_device"
-              sequence="20"/>
+    <menuitem id="menu_entry_control_root" name="T4TEK Attendance Gateway" sequence="35" groups="base.group_system"/>
+    <menuitem id="menu_entry_control_controller" name="Controllers" parent="menu_entry_control_root" action="action_entry_control_controller" sequence="10" groups="base.group_system"/>
+    <menuitem id="menu_entry_control_device" name="Devices" parent="menu_entry_control_root" action="action_entry_control_device" sequence="20" groups="base.group_system"/>
+    <menuitem id="menu_entry_control_employee_sync" name="Employee Sync Status" parent="menu_entry_control_root" action="action_entry_control_employee_sync" sequence="30" groups="base.group_system"/>
+    <menuitem id="menu_entry_control_attendance" name="Attendance Logs" parent="menu_entry_control_root" action="action_entry_control_attendance_log" sequence="40" groups="base.group_system"/>
 </odoo>
