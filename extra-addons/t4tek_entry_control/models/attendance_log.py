@@ -1,4 +1,5 @@
-from datetime import timezone
+from datetime import timezone, datetime, time
+from collections import defaultdict
 from dateutil import parser as date_parser
 from odoo import api, fields, models, _, SUPERUSER_ID
 
@@ -314,6 +315,22 @@ class EntryControlAttendanceLog(models.Model):
         return rec, False
 
     def action_sync_hr_attendance(self):
+        # Create/update hr.attendance by day, not by each raw log.
+        # Attendance Logs remain the audit trail and their stored direction must
+        # NOT be changed by this method. hr.attendance is a derived summary:
+        #
+        # For each Employee + day:
+        # - check_in  = the first Attendance Log whose direction is Check In
+        # - check_out = the final raw Attendance Log of the day, if it is after
+        #               check_in and there is more than one log in that day
+        #
+        # This intentionally allows a final raw log that is still marked
+        # direction = Check In to be used as the derived daily check_out, without
+        # rewriting that Attendance Log. Example:
+        #   08:00 Check In, 08:10 Check Out, 13:10 Check In
+        # creates hr.attendance 08:00 -> 13:10, while the 13:10 log remains
+        # Check In for traceability.
+        #
         # API routes are auth=none, so the request env can have no normal
         # singleton user. hr.attendance may access env.user internally during
         # create/write; use an explicit superuser environment to avoid
@@ -321,29 +338,77 @@ class EntryControlAttendanceLog(models.Model):
         super_env = api.Environment(self.env.cr, SUPERUSER_ID, dict(self.env.context or {}))
         Attendance = super_env["hr.attendance"].sudo()
         Log = super_env[self._name].sudo()
-        for original_rec in self:
-            rec = Log.browse(original_rec.id)
+        selected_logs = Log.browse(self.ids).sorted(key=lambda r: (r.employee_id.id or 0, r.check_time or datetime.min, r.id))
+
+        grouped = defaultdict(list)
+        for rec in selected_logs:
             try:
                 if not rec.employee_id:
                     raise ValueError(_("Cannot sync to Attendances: employee not found for this attendance log."))
-                check_dt = rec.check_time
-                open_att = Attendance.search([
-                    ("employee_id", "=", rec.employee_id.id),
-                    ("check_out", "=", False),
-                ], order="check_in desc, id desc", limit=1)
-                if rec.direction == "out":
-                    if not open_att:
-                        raise ValueError(_("Cannot check out: no open attendance for %s.") % rec.employee_id.display_name)
-                    if open_att.check_in and check_dt < open_att.check_in:
-                        raise ValueError(_("Cannot check out before check in."))
-                    open_att.write({"check_out": check_dt})
-                    rec.write({"hr_attendance_id": open_att.id, "sync_status": "success", "error_message": False})
-                else:
-                    if open_att:
-                        rec.write({"hr_attendance_id": open_att.id, "sync_status": "skipped", "error_message": _("Employee already has an open attendance; log linked only.")})
-                    else:
-                        att = Attendance.create({"employee_id": rec.employee_id.id, "check_in": check_dt})
-                        rec.write({"hr_attendance_id": att.id, "sync_status": "success", "error_message": False})
+                if not rec.check_time:
+                    raise ValueError(_("Cannot sync to Attendances: check time is empty."))
+                day = fields.Date.to_date(rec.check_time)
+                grouped[(rec.employee_id.id, day)].append(rec.id)
             except Exception as e:
                 rec.write({"sync_status": "failed", "error_message": str(e)})
+
+        for (employee_id, day), log_ids in grouped.items():
+            day_logs = Log.browse(log_ids).sorted(key=lambda r: (r.check_time, r.id))
+            if not day_logs:
+                continue
+
+            check_in_logs = day_logs.filtered(lambda r: r.direction == "in")
+            if not check_in_logs:
+                day_logs.write({
+                    "sync_status": "failed",
+                    "error_message": _("Cannot create attendance: no Check In log found for this day."),
+                })
+                continue
+
+            first_in_log = check_in_logs[0]
+            check_in = first_in_log.check_time
+
+            # Derived check_out: use the final raw log of the day. Do not modify
+            # that log's direction. If there is only one usable log, keep the
+            # hr.attendance open with check_out empty.
+            candidate_out_logs = day_logs.filtered(lambda r: r.check_time and r.check_time > check_in)
+            last_out_log = candidate_out_logs[-1] if candidate_out_logs else Log.browse()
+            check_out = last_out_log.check_time if last_out_log else False
+
+            try:
+                if check_out and check_out < check_in:
+                    raise ValueError(_("Cannot create attendance: check out is before check in."))
+
+                day_start = datetime.combine(day, time.min)
+                day_end = datetime.combine(day, time.max)
+                attendance = Attendance.search([
+                    ("employee_id", "=", employee_id),
+                    ("check_in", ">=", day_start),
+                    ("check_in", "<=", day_end),
+                ], order="check_in asc, id asc", limit=1)
+                if not attendance:
+                    attendance = Attendance.search([
+                        ("employee_id", "=", employee_id),
+                        ("check_out", ">=", day_start),
+                        ("check_out", "<=", day_end),
+                    ], order="check_in asc, id asc", limit=1)
+
+                vals = {"employee_id": employee_id, "check_in": check_in}
+                if check_out:
+                    vals["check_out"] = check_out
+                elif attendance and attendance.check_out:
+                    vals["check_out"] = False
+
+                if attendance:
+                    attendance.write(vals)
+                else:
+                    attendance = Attendance.create(vals)
+
+                day_logs.write({
+                    "hr_attendance_id": attendance.id,
+                    "sync_status": "success",
+                    "error_message": False,
+                })
+            except Exception as e:
+                day_logs.write({"sync_status": "failed", "error_message": str(e)})
         return True

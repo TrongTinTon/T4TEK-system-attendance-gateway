@@ -38,7 +38,9 @@ class EntryControlCreateAttendanceWizard(models.TransientModel):
             ("check_time", "<=", date_to),
         ], order="check_time asc, id asc")
 
-        logs.action_recompute_directions()
+        # Do not recompute or overwrite raw log directions here.
+        # The server already decided each log direction when it was ingested;
+        # Create Attendances must only consume existing Check In / Check Out logs.
         logs.action_sync_hr_attendance()
 
         return {
