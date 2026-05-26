@@ -8,7 +8,10 @@ class EntryControlEmployeeSync(models.Model):
 
     controller_id = fields.Many2one("entry.control.controller", required=True, ondelete="cascade", index=True)
     employee_id = fields.Many2one("hr.employee", required=True, ondelete="cascade", index=True)
-    employee_name = fields.Char()
+    employee_code = fields.Char(string="Employee Code", related="employee_id.code", store=True, readonly=True, index=True)
+    # Kept for backward compatibility/audit data already written by older API calls.
+    # Displayed together with Employee Code for easier operator review.
+    employee_name = fields.Char(string="Employee Name")
     last_synced_at = fields.Datetime()
     sync_status = fields.Selection([
         ("pending", "Pending"),
