@@ -1,9 +1,44 @@
 <odoo>
+    <record id="view_entry_control_create_attendance_wizard_form" model="ir.ui.view">
+        <field name="name">entry.control.create.attendance.wizard.form</field>
+        <field name="model">entry.control.create.attendance.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Create Attendances">
+                <group>
+                    <field name="month"/>
+                    <field name="year"/>
+                </group>
+                <footer>
+                    <button name="action_create_attendances"
+                            type="object"
+                            string="Create Attendances"
+                            class="btn-primary"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_entry_control_create_attendance_wizard" model="ir.actions.act_window">
+        <field name="name">Create Attendances</field>
+        <field name="res_model">entry.control.create.attendance.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+
+
     <record id="view_entry_control_attendance_log_tree" model="ir.ui.view">
         <field name="name">entry.control.attendance.log.list</field>
         <field name="model">entry.control.attendance.log</field>
         <field name="arch" type="xml">
             <list string="Attendance Logs" decoration-danger="sync_status == 'failed'" decoration-muted="sync_status == 'skipped'">
+                <header>
+                    <button name="%(action_entry_control_create_attendance_wizard)d"
+                            type="action"
+                            string="Create Attendances"
+                            class="btn-primary"
+                            display="always"/>
+                </header>
                 <field name="employee_id"/>
                 <field name="direction" widget="badge" decoration-success="direction == 'in'" decoration-info="direction == 'out'"/>
                 <field name="check_time"/>

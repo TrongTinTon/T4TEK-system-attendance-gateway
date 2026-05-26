@@ -158,19 +158,45 @@ class EntryControlAttendanceLog(models.Model):
         return "in"
 
     @api.model
-    def _infer_direction(self, employee, check_dt, device_direction):
-        # Hybrid behavior without storing source: trust explicit out from device;
-        # otherwise infer from open hr.attendance.
-        if device_direction == "out":
+    def _infer_direction(self, employee, check_dt, device_direction=None):
+        # Server-owned operational direction. Do not trust direction / AttState
+        # codes sent by the device or Controller.
+        # Rule: if the previous Attendance Log of the employee is Check In,
+        # the next log is Check Out; otherwise it is Check In.
+        if not employee:
+            return "in"
+        previous_log = self.sudo().search([
+            ("employee_id", "=", employee.id),
+            ("check_time", "<", check_dt),
+            ("direction", "in", ["in", "out"]),
+        ], order="check_time desc, id desc", limit=1)
+        if previous_log and previous_log.direction == "in":
             return "out"
-        if employee:
-            open_att = self.env["hr.attendance"].sudo().search([
-                ("employee_id", "=", employee.id),
-                ("check_out", "=", False),
-            ], order="check_in desc, id desc", limit=1)
-            if open_att:
-                return "out"
         return "in"
+
+    def action_recompute_directions(self):
+        # Recompute directions for a selected batch in chronological order.
+        # This is used before Create Attendances so historical logs imported
+        # out of order still follow the same server-owned alternating rule.
+        Log = self.sudo()
+        logs = Log.browse(self.ids).filtered(lambda r: r.employee_id and r.check_time)
+        employees = logs.mapped("employee_id")
+        for employee in employees:
+            emp_logs = logs.filtered(lambda r: r.employee_id.id == employee.id).sorted(key=lambda r: (r.check_time, r.id))
+            if not emp_logs:
+                continue
+            first_dt = emp_logs[0].check_time
+            previous_log = Log.search([
+                ("employee_id", "=", employee.id),
+                ("check_time", "<", first_dt),
+                ("direction", "in", ["in", "out"]),
+            ], order="check_time desc, id desc", limit=1)
+            next_direction = "out" if previous_log and previous_log.direction == "in" else "in"
+            for log in emp_logs:
+                if log.direction != next_direction:
+                    log.write({"direction": next_direction})
+                next_direction = "out" if next_direction == "in" else "in"
+        return True
 
     @api.model
     def _verify_method_from_type(self, verify_type):
@@ -263,8 +289,9 @@ class EntryControlAttendanceLog(models.Model):
         if existing:
             return existing, True
 
-        device_direction = self._device_direction_from_check_type(check_type)
-        direction = self._infer_direction(employee, check_dt, device_direction)
+        # Direction is decided by the server only. Device check_type / AttState
+        # is stored as raw information, not used as the operational direction.
+        direction = self._infer_direction(employee, check_dt)
         verify_method = data.get("verify_method") or data.get("verifyMethod") or self._verify_method_from_type(verify_type)
         vals = {
             "controller_id": controller.id,
@@ -281,7 +308,9 @@ class EntryControlAttendanceLog(models.Model):
             "sync_status": "success",
         }
         rec = self.sudo().create(vals)
-        rec.action_sync_hr_attendance()
+        # Keep raw Attendance Logs only when API receives logs.
+        # hr.attendance records are created manually from the list-view
+        # Create Attendances wizard.
         return rec, False
 
     def action_sync_hr_attendance(self):
