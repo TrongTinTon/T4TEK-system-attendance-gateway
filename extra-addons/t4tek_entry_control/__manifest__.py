@@ -11,7 +11,7 @@ Clean controller-client architecture:
 - Odoo does not track user-to-device sync status; that stays local to Controller.
 - Attendance Logs are converted to hr.attendance using server-side direction inference.
 """,
-    "version": "19.0.30.24",
+    "version": "19.0.30.26",
     "category": "Human Resources/Attendances",
     "author": "T4TEK",
     "maintainer": "T4TEK",
@@ -25,6 +25,7 @@ Clean controller-client architecture:
     "data": [
         "security/groups.xml",
         "security/ir.model.access.csv",
+        "data/ir_cron.xml",
         "views/controller_views.xml",
         "views/device_views.xml",
         "views/employee_sync_views.xml",

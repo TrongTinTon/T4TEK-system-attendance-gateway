@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!--
+        Scheduled Action: creates daily hr.attendance records from Entry Control
+        raw logs. The cron is persistent; the trigger below makes it visible and
+        due immediately after module update/install so demo environments do not
+        need to wait for the next daily interval.
+    -->
+    <record id="ir_cron_entry_control_create_daily_attendances" model="ir.cron">
+        <field name="name">Entry Control: Create Daily Attendances</field>
+        <field name="model_id" ref="model_entry_control_attendance_log"/>
+        <field name="state">code</field>
+        <field name="code">model.cron_create_daily_attendances()</field>
+        <field name="user_id" ref="base.user_root"/>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="nextcall" eval="time.strftime('%Y-%m-%d %H:%M:%S')"/>
+        <field name="active">True</field>
+    </record>
+
+    <!-- Scheduled Actions Triggers: queue one immediate run after install/update. -->
+    <record id="ir_cron_trigger_entry_control_create_daily_attendances_now" model="ir.cron.trigger">
+        <field name="cron_id" ref="ir_cron_entry_control_create_daily_attendances"/>
+        <field name="call_at" eval="time.strftime('%Y-%m-%d %H:%M:%S')"/>
+    </record>
+</odoo>

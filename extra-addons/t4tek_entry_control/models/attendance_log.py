@@ -1,8 +1,12 @@
-from datetime import timezone, datetime, time
+from datetime import timezone, datetime, time, timedelta
 from collections import defaultdict
+import logging
 from dateutil import parser as date_parser
 from odoo import api, fields, models, _, SUPERUSER_ID
 
+
+
+_logger = logging.getLogger(__name__)
 
 
 class EntryControlAttendanceLog(models.Model):
@@ -313,6 +317,46 @@ class EntryControlAttendanceLog(models.Model):
         # hr.attendance records are created manually from the list-view
         # Create Attendances wizard.
         return rec, False
+
+
+
+    @api.model
+    def cron_create_daily_attendances(self, target_date=None):
+        """Scheduled action: create/update hr.attendance from raw logs by day.
+
+        Default behavior processes yesterday, so the full day has already ended
+        before deriving daily check_in/check_out. Attendance Logs remain the
+        audit trail: this method never changes their stored direction.
+        """
+        if target_date:
+            day = fields.Date.to_date(target_date)
+        else:
+            day = fields.Date.context_today(self) - timedelta(days=1)
+
+        date_from = datetime.combine(day, time.min)
+        date_to = datetime.combine(day, time.max)
+
+        logs = self.sudo().search([
+            ("check_time", ">=", date_from),
+            ("check_time", "<=", date_to),
+        ], order="check_time asc, id asc")
+
+        _logger.info(
+            "[ENTRY CONTROL] Daily attendance cron started. target_date=%s logs=%s",
+            day, len(logs)
+        )
+        if logs:
+            logs.action_sync_hr_attendance()
+
+        params = self.env["ir.config_parameter"].sudo()
+        params.set_param("entry_control.last_daily_attendance_cron_at", fields.Datetime.to_string(fields.Datetime.now()))
+        params.set_param("entry_control.last_daily_attendance_cron_date", str(day))
+        params.set_param("entry_control.last_daily_attendance_cron_log_count", str(len(logs)))
+        _logger.info(
+            "[ENTRY CONTROL] Daily attendance cron finished. target_date=%s logs=%s",
+            day, len(logs)
+        )
+        return True
 
     def action_sync_hr_attendance(self):
         # Create/update hr.attendance by day, not by each raw log.
