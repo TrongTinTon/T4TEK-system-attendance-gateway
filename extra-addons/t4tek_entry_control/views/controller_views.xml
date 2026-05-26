@@ -78,7 +78,6 @@
                                     <field name="employee_id"/>
                                     <field name="direction" widget="badge"/>
                                     <field name="check_time"/>
-                                    <field name="device_timezone"/>
                                     <field name="serial_number" string="Device"/>
                                     <field name="verify_method"/>
                                     <field name="sync_status" widget="badge"/>
