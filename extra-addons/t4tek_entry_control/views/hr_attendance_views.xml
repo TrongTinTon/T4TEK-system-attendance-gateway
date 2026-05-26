@@ -1,0 +1,23 @@
+<odoo>
+    <record id="view_hr_attendance_list_entry_control_message" model="ir.ui.view">
+        <field name="name">hr.attendance.list.entry.control.message</field>
+        <field name="model">hr.attendance</field>
+        <field name="inherit_id" search="[('model','=','hr.attendance'),('type','=','list'),('name','=','hr.attendance.list')]"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='check_out']" position="after">
+                <field name="message" string="Message" optional="show"/>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_hr_attendance_form_entry_control_message" model="ir.ui.view">
+        <field name="name">hr.attendance.form.entry.control.message</field>
+        <field name="model">hr.attendance</field>
+        <field name="inherit_id" search="[('model','=','hr.attendance'),('type','=','form'),('name','=','hr.attendance.form')]"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='check_out']" position="after">
+                <field name="message" string="Message" readonly="1"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

@@ -1,6 +1,4 @@
 from datetime import date
-from calendar import monthrange
-
 from odoo import api, fields, models, _
 
 
@@ -28,14 +26,18 @@ class EntryControlCreateAttendanceWizard(models.TransientModel):
         self.ensure_one()
         month = int(self.month)
         year = int(self.year)
-        last_day = monthrange(year, month)[1]
-        date_from = date(year, month, 1).strftime("%Y-%m-%d 00:00:00")
-        date_to = date(year, month, last_day).strftime("%Y-%m-%d 23:59:59")
-
         Log = self.env["entry.control.attendance.log"].sudo()
+        month_start = date(year, month, 1)
+        if month == 12:
+            next_month_start = date(year + 1, 1, 1)
+        else:
+            next_month_start = date(year, month + 1, 1)
+        date_from = Log._local_day_bounds_utc(month_start)[0]
+        date_to = Log._local_day_bounds_utc(next_month_start)[0]
+
         logs = Log.search([
             ("check_time", ">=", date_from),
-            ("check_time", "<=", date_to),
+            ("check_time", "<", date_to),
         ], order="check_time asc, id asc")
 
         # Do not recompute or overwrite raw log directions here.

@@ -2,6 +2,7 @@ from datetime import timezone, datetime, time, timedelta
 from collections import defaultdict
 import logging
 from dateutil import parser as date_parser
+import pytz
 from odoo import api, fields, models, _, SUPERUSER_ID
 
 
@@ -154,6 +155,87 @@ class EntryControlAttendanceLog(models.Model):
                 tz = "%s:%s" % (tz[:3], tz[3:])
             return dt.astimezone(timezone.utc).replace(tzinfo=None), tz
         return dt.replace(tzinfo=None), ""
+
+    @api.model
+    def _attendance_timezone_name(self):
+        """Return the business timezone used by Entry Control.
+
+        Do not rely on ``env.user.tz`` as the first option: scheduled actions
+        can run as an Odoo/system user whose timezone is UTC. If we create
+        synthetic 23:59 / 00:00 values using UTC, users in Vietnam will see
+        them as 06:59 / 07:00 on the next day.
+
+        Use a module-level system parameter first so cron, manual wizard and
+        API-driven jobs all use the same business timezone.
+        """
+        param_tz = self.env["ir.config_parameter"].sudo().get_param(
+            "entry_control.attendance_timezone",
+            default="Asia/Ho_Chi_Minh",
+        )
+        tz_name = (
+            param_tz
+            or getattr(self.env.company.resource_calendar_id, "tz", False)
+            or self.env.context.get("tz")
+            or self.env.user.tz
+            or "Asia/Ho_Chi_Minh"
+        )
+        return str(tz_name or "Asia/Ho_Chi_Minh").strip() or "Asia/Ho_Chi_Minh"
+
+    @api.model
+    def _attendance_timezone(self):
+        """Timezone used for derived hr.attendance business days.
+
+        Odoo stores datetimes in UTC. Synthetic 23:59 / 00:00 values must be
+        understood as local business time first, then converted back to UTC
+        before writing to hr.attendance.
+        """
+        tz_name = self._attendance_timezone_name()
+        try:
+            return pytz.timezone(tz_name)
+        except Exception:
+            _logger.warning("[ENTRY CONTROL] Invalid attendance timezone %s; fallback to Asia/Ho_Chi_Minh", tz_name)
+            return pytz.timezone("Asia/Ho_Chi_Minh")
+
+    @api.model
+    def _local_datetime_to_utc(self, local_dt):
+        """Convert a naive local datetime to the naive UTC datetime Odoo stores."""
+        if not local_dt:
+            return False
+        if getattr(local_dt, "tzinfo", None):
+            aware = local_dt
+        else:
+            tz = self._attendance_timezone()
+            try:
+                aware = tz.localize(local_dt, is_dst=None)
+            except TypeError:
+                aware = tz.localize(local_dt)
+            except Exception:
+                aware = tz.localize(local_dt)
+        return aware.astimezone(pytz.UTC).replace(tzinfo=None)
+
+    @api.model
+    def _utc_datetime_to_local(self, utc_dt):
+        """Convert an Odoo naive UTC datetime to local aware datetime."""
+        if not utc_dt:
+            return False
+        if getattr(utc_dt, "tzinfo", None):
+            aware_utc = utc_dt.astimezone(pytz.UTC)
+        else:
+            aware_utc = pytz.UTC.localize(utc_dt)
+        return aware_utc.astimezone(self._attendance_timezone())
+
+    @api.model
+    def _local_date_from_utc(self, utc_dt):
+        local_dt = self._utc_datetime_to_local(utc_dt)
+        return local_dt.date() if local_dt else False
+
+    @api.model
+    def _local_day_bounds_utc(self, day):
+        """Return [local day 00:00, next day 00:00) as naive UTC bounds."""
+        day = fields.Date.to_date(day)
+        start_utc = self._local_datetime_to_utc(datetime.combine(day, time.min))
+        end_utc = self._local_datetime_to_utc(datetime.combine(day + timedelta(days=1), time.min))
+        return start_utc, end_utc
 
     @api.model
     def _device_direction_from_check_type(self, check_type):
@@ -333,17 +415,17 @@ class EntryControlAttendanceLog(models.Model):
         else:
             day = fields.Date.context_today(self) - timedelta(days=1)
 
-        date_from = datetime.combine(day, time.min)
-        date_to = datetime.combine(day, time.max)
+        date_from, date_to = self._local_day_bounds_utc(day)
 
         logs = self.sudo().search([
             ("check_time", ">=", date_from),
-            ("check_time", "<=", date_to),
+            ("check_time", "<", date_to),
         ], order="check_time asc, id asc")
 
+        attendance_tz_name = self._attendance_timezone_name()
         _logger.info(
-            "[ENTRY CONTROL] Daily attendance cron started. target_date=%s logs=%s",
-            day, len(logs)
+            "[ENTRY CONTROL] Daily attendance cron started. target_date=%s logs=%s timezone=%s",
+            day, len(logs), attendance_tz_name
         )
         if logs:
             logs.action_sync_hr_attendance()
@@ -352,9 +434,10 @@ class EntryControlAttendanceLog(models.Model):
         params.set_param("entry_control.last_daily_attendance_cron_at", fields.Datetime.to_string(fields.Datetime.now()))
         params.set_param("entry_control.last_daily_attendance_cron_date", str(day))
         params.set_param("entry_control.last_daily_attendance_cron_log_count", str(len(logs)))
+        params.set_param("entry_control.last_daily_attendance_cron_timezone", attendance_tz_name)
         _logger.info(
-            "[ENTRY CONTROL] Daily attendance cron finished. target_date=%s logs=%s",
-            day, len(logs)
+            "[ENTRY CONTROL] Daily attendance cron finished. target_date=%s logs=%s timezone=%s",
+            day, len(logs), attendance_tz_name
         )
         return True
 
@@ -365,15 +448,17 @@ class EntryControlAttendanceLog(models.Model):
         #
         # For each Employee + day:
         # - check_in  = the first Attendance Log whose direction is Check In
-        # - check_out = the final raw Attendance Log of the day, if it is after
-        #               check_in and there is more than one log in that day
+        # - check_out = if the final log after check_in is Check Out, use that
+        #               real Check Out time; otherwise generate 23:59:00 of
+        #               the same day and create a carry-over Check In at 00:00
+        #               on the next day.
         #
-        # This intentionally allows a final raw log that is still marked
-        # direction = Check In to be used as the derived daily check_out, without
-        # rewriting that Attendance Log. Example:
-        #   08:00 Check In, 08:10 Check Out, 13:10 Check In
-        # creates hr.attendance 08:00 -> 13:10, while the 13:10 log remains
-        # Check In for traceability.
+        # Examples:
+        # - 08:00 IN only                      -> 08:00 / 23:59, plus next-day 00:00 IN
+        # - 08:00 IN, 08:10 OUT, 13:10 IN     -> 08:00 / 23:59, plus next-day 00:00 IN
+        # - 08:00 IN, 17:10 OUT               -> 08:00 / 17:10
+        #
+        # This method never rewrites or creates Attendance Log rows.
         #
         # API routes are auth=none, so the request env can have no normal
         # singleton user. hr.attendance may access env.user internally during
@@ -384,6 +469,41 @@ class EntryControlAttendanceLog(models.Model):
         Log = super_env[self._name].sudo()
         selected_logs = Log.browse(self.ids).sorted(key=lambda r: (r.employee_id.id or 0, r.check_time or datetime.min, r.id))
 
+        system_checkin_marker = "Entry Control: Check In 00:00 do hệ thống tự tạo"
+        system_checkout_marker = "Entry Control: Check Out 23:59 do hệ thống tự tạo"
+        system_checkout_message = _(
+            "Entry Control: Check Out 23:59 do hệ thống tự tạo vì thiếu Check Out cuối ngày; không phải dữ liệu người dùng chấm công."
+        )
+        system_next_checkin_message = _(
+            "Entry Control: Check In 00:00 do hệ thống tự tạo từ ca/ngày trước; không phải dữ liệu người dùng chấm công."
+        )
+
+        def _merge_message(existing_message, new_message):
+            existing_message = (existing_message or "").strip()
+            new_message = (new_message or "").strip()
+            if not new_message:
+                return existing_message or False
+            if not existing_message:
+                return new_message
+            if new_message in existing_message:
+                return existing_message
+            return "%s\n%s" % (existing_message, new_message)
+
+        def _find_attendance_for_day(employee_id, day):
+            day_start, day_end = Log._local_day_bounds_utc(day)
+            attendance = Attendance.search([
+                ("employee_id", "=", employee_id),
+                ("check_in", ">=", day_start),
+                ("check_in", "<", day_end),
+            ], order="check_in asc, id asc", limit=1)
+            if not attendance:
+                attendance = Attendance.search([
+                    ("employee_id", "=", employee_id),
+                    ("check_out", ">=", day_start),
+                    ("check_out", "<", day_end),
+                ], order="check_in asc, id asc", limit=1)
+            return attendance
+
         grouped = defaultdict(list)
         for rec in selected_logs:
             try:
@@ -391,7 +511,7 @@ class EntryControlAttendanceLog(models.Model):
                     raise ValueError(_("Cannot sync to Attendances: employee not found for this attendance log."))
                 if not rec.check_time:
                     raise ValueError(_("Cannot sync to Attendances: check time is empty."))
-                day = fields.Date.to_date(rec.check_time)
+                day = Log._local_date_from_utc(rec.check_time)
                 grouped[(rec.employee_id.id, day)].append(rec.id)
             except Exception as e:
                 rec.write({"sync_status": "failed", "error_message": str(e)})
@@ -412,41 +532,115 @@ class EntryControlAttendanceLog(models.Model):
             first_in_log = check_in_logs[0]
             check_in = first_in_log.check_time
 
-            # Derived check_out: use the final raw log of the day. Do not modify
-            # that log's direction. If there is only one usable log, keep the
-            # hr.attendance open with check_out empty.
-            candidate_out_logs = day_logs.filtered(lambda r: r.check_time and r.check_time > check_in)
-            last_out_log = candidate_out_logs[-1] if candidate_out_logs else Log.browse()
-            check_out = last_out_log.check_time if last_out_log else False
+            logs_after_check_in = day_logs.filtered(
+                lambda r: r.check_time and (r.check_time, r.id) >= (first_in_log.check_time, first_in_log.id)
+            ).sorted(key=lambda r: (r.check_time, r.id))
+            final_log = logs_after_check_in[-1] if logs_after_check_in else first_in_log
+
+            generated_checkout = not (
+                final_log.direction == "out" and final_log.check_time and final_log.check_time > check_in
+            )
+            if generated_checkout:
+                # Missing final Check Out, or a new Check In appears after a
+                # Check Out. Close the derived daily attendance at 23:59 while
+                # preserving the raw Attendance Logs unchanged for audit.
+                check_out = Log._local_datetime_to_utc(datetime.combine(day, time(hour=23, minute=59)))
+                if check_out <= check_in:
+                    # Keep check_out strictly after check_in for edge cases where
+                    # the first Check In is at/after 23:59:00 local time.
+                    check_out = Log._local_datetime_to_utc(datetime.combine(day, time.max).replace(microsecond=0))
+            else:
+                # Normal closed day: final raw log after the first Check In is a
+                # Check Out, so use that real Check Out time.
+                check_out = final_log.check_time
 
             try:
-                if check_out and check_out < check_in:
-                    raise ValueError(_("Cannot create attendance: check out is before check in."))
+                attendance = _find_attendance_for_day(employee_id, day)
 
-                day_start = datetime.combine(day, time.min)
-                day_end = datetime.combine(day, time.max)
-                attendance = Attendance.search([
-                    ("employee_id", "=", employee_id),
-                    ("check_in", ">=", day_start),
-                    ("check_in", "<=", day_end),
-                ], order="check_in asc, id asc", limit=1)
-                if not attendance:
-                    attendance = Attendance.search([
-                        ("employee_id", "=", employee_id),
-                        ("check_out", ">=", day_start),
-                        ("check_out", "<=", day_end),
-                    ], order="check_in asc, id asc", limit=1)
+                # IMPORTANT: hr.attendance is derived from Attendance Logs.
+                # If the previous day created a system 00:00 carry-over row for
+                # this day, and this day now has real raw logs, do NOT keep 00:00
+                # as today's check_in. Overwrite the derived attendance using the
+                # first real Check In from Attendance Logs.
+                existing_message = attendance.message if attendance and "message" in Attendance._fields else ""
 
-                vals = {"employee_id": employee_id, "check_in": check_in}
-                if check_out:
-                    vals["check_out"] = check_out
-                elif attendance and attendance.check_out:
-                    vals["check_out"] = False
+                if check_out <= check_in:
+                    raise ValueError(_("Cannot create attendance: check out is not after check in."))
+
+                def _remove_system_messages(existing_message):
+                    lines = [line.strip() for line in (existing_message or "").splitlines() if line.strip()]
+                    lines = [
+                        line for line in lines
+                        if system_checkin_marker not in line and system_checkout_marker not in line
+                    ]
+                    return "\n".join(lines) if lines else False
+
+                # Rebuild message from the current day's derived result. This
+                # prevents a previous system 00:00 Check In note from remaining
+                # after the day receives real Attendance Logs.
+                message_value = _remove_system_messages(existing_message)
+                if generated_checkout:
+                    message_value = _merge_message(message_value, system_checkout_message)
+                elif not message_value:
+                    message_value = False
+
+                vals = {
+                    "employee_id": employee_id,
+                    "check_in": check_in,
+                    "check_out": check_out,
+                }
+                if "message" in Attendance._fields:
+                    vals["message"] = message_value
 
                 if attendance:
                     attendance.write(vals)
                 else:
                     attendance = Attendance.create(vals)
+
+                # When the daily Check Out is generated at 23:59, create/update a
+                # carry-over Check In at 00:00 on the next day ONLY when the next
+                # day has no real Attendance Logs yet.
+                #
+                # Important: hr.attendance is derived data. Attendance Logs are
+                # always the source of truth. If the next day already has raw
+                # logs, do not create/keep a 00:00 placeholder that could later
+                # be mistaken for the real check_in. If a 00:00 placeholder was
+                # created by a previous cron run, the next day's processing will
+                # overwrite it with the first real Check In from Attendance Logs.
+                if generated_checkout:
+                    next_day = day + timedelta(days=1)
+                    next_start, next_end = Log._local_day_bounds_utc(next_day)
+                    has_next_day_logs = bool(Log.search_count([
+                        ("employee_id", "=", employee_id),
+                        ("check_time", ">=", next_start),
+                        ("check_time", "<", next_end),
+                    ]))
+
+                    if not has_next_day_logs:
+                        next_check_in = Log._local_datetime_to_utc(datetime.combine(next_day, time.min))
+                        next_attendance = _find_attendance_for_day(employee_id, next_day)
+                        next_vals = {"employee_id": employee_id, "check_in": next_check_in}
+                        if "message" in Attendance._fields:
+                            next_existing_message = next_attendance.message if next_attendance else ""
+                            next_vals["message"] = _merge_message(next_existing_message, system_next_checkin_message)
+                        if next_attendance:
+                            # Do not overwrite a next-day attendance that was already
+                            # derived from real Attendance Logs. The 00:00 carry-over
+                            # is only a placeholder when no derived row exists yet.
+                            # If the existing row is the same generated 00:00 row,
+                            # just refresh/merge its message.
+                            next_existing_message = next_attendance.message if "message" in Attendance._fields else ""
+                            is_existing_generated_midnight = (
+                                next_attendance.check_in
+                                and Log._local_date_from_utc(next_attendance.check_in) == next_day
+                                and next_attendance.check_in == next_check_in
+                                and next_existing_message
+                                and system_checkin_marker in next_existing_message
+                            )
+                            if is_existing_generated_midnight and "message" in Attendance._fields:
+                                next_attendance.write({"message": next_vals["message"]})
+                        else:
+                            Attendance.create(next_vals)
 
                 day_logs.write({
                     "hr_attendance_id": attendance.id,
