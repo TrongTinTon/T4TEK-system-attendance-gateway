@@ -93,7 +93,7 @@ class EntryControlAPI(http.Controller):
         """Return the employee-code fields available on hr.employee.
 
         The SEM module already provides ``hr.employee.code`` as Mã nhân viên.
-        This Attendance Gateway module does not create that field; it only uses
+        This Entry Control module does not create that field; it only uses
         it as the canonical identifier exchanged with the Controller and as the
         ZKTeco device user ID / EnrollNumber.
         """

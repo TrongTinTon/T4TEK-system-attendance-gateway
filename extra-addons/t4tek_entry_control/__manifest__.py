@@ -1,17 +1,17 @@
 {
-    "name": "T4TEK Attendance Gateway",
-    "summary": "Controller-based ZKTeco attendance gateway for Odoo Attendances.",
-    "description": """T4TEK Attendance Gateway
-========================
+    "name": "T4TEK Entry Control",
+    "summary": "ZKTeco entry-control device sync, attendance logs, and Odoo Attendances automation.",
+    "description": """T4TEK Entry Control
+====================
 
 Clean controller-client architecture:
 - Controller authenticates with Controller ID + Secret Key.
 - Controller actively calls Odoo APIs; Odoo never calls into Controller.
 - Odoo manages Controllers, Devices, Employee Sync Status, and Attendance Logs.
-- Odoo does not track user-to-device sync status; that stays local to Controller.
-- Attendance Logs are converted to hr.attendance using server-side direction inference.
+- Controller/device identity uses serial_number; employee identity uses employee code.
+- Attendance Logs remain raw audit data; hr.attendance is created by manual action or scheduled automation.
 """,
-    "version": "19.0.30.26",
+    "version": "19.0.30.27",
     "category": "Human Resources/Attendances",
     "author": "T4TEK",
     "maintainer": "T4TEK",
