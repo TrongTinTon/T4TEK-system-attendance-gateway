@@ -720,14 +720,21 @@ class EntryControlAttendanceLog(models.Model):
             emp_logs = Log._resequence_employee_logs(employee, search_from, search_to)
             affected |= emp_logs
 
-            emp_logs = Log.search([
-                ("employee_id", "=", employee.id),
-                ("check_time", ">=", search_from),
-                ("check_time", "<=", search_to),
-            ], order="check_time asc, id asc")
-
             day = min_local_day
             while day <= max_local_day:
+                # Recompute directions and refresh the window on every business
+                # day. This is important when a system 23:59 Check Out is added
+                # for the previous day: that new boundary changes the expected
+                # direction of the next real log. Without this refresh, a real
+                # Check In on the next day could still be seen as Check Out and
+                # the next day's missing 23:59 boundary would not be created.
+                Log._resequence_employee_logs(employee, search_from, search_to)
+                emp_logs = Log.search([
+                    ("employee_id", "=", employee.id),
+                    ("check_time", ">=", search_from),
+                    ("check_time", "<=", search_to),
+                ], order="check_time asc, id asc")
+
                 day_logs = emp_logs.filtered(lambda r, d=day: Log._business_day_from_log(r) == d).sorted(key=lambda r: (r.check_time, r.id))
                 if day_logs:
                     last_log = day_logs[-1]
@@ -740,6 +747,13 @@ class EntryControlAttendanceLog(models.Model):
                             checkout_local,
                             _("missing Check Out at the end of the day"),
                         )
+                        # Refresh after adding 23:59 so the next-day check is
+                        # based on the latest records in the same UTC window.
+                        emp_logs = Log.search([
+                            ("employee_id", "=", employee.id),
+                            ("check_time", ">=", search_from),
+                            ("check_time", "<=", search_to),
+                        ], order="check_time asc, id asc")
                         next_day_real_logs = emp_logs.filtered(
                             lambda r, nd=day + timedelta(days=1): r.verify_method != "system_generated" and Log._business_day_from_log(r) == nd
                         )
