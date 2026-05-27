@@ -18,7 +18,8 @@ class EntryControlAttendanceLog(models.Model):
 
     _DEFAULT_ATTENDANCE_TIMEZONE = "Asia/Ho_Chi_Minh"
     _CONFIG_ATTENDANCE_TIMEZONE = "entry_control.attendance_timezone"
-    _SYSTEM_GENERATED_TIMEZONE_MARKER = "0"
+    _SYSTEM_GENERATED_TIMEZONE_MARKER = ""
+    _LEGACY_SYSTEM_GENERATED_TIMEZONE_MARKER = "0"
 
     controller_id = fields.Many2one("entry.control.controller", ondelete="set null", index=True)
     device_id = fields.Many2one("entry.control.device", string="Device Record", ondelete="set null", index=True)
@@ -34,7 +35,7 @@ class EntryControlAttendanceLog(models.Model):
     # Example controller value `2026-05-27 09:45:23+07` is stored as
     # `2026-05-27 02:45:23` in check_time, while device_timezone keeps the
     # device offset note for real logs. System-generated logs keep
-    # device_timezone = 0 and use the module timezone configuration for
+    # device_timezone empty and use the module timezone configuration for
     # local-day / boundary calculation.
     check_time = fields.Datetime(string="Check Time", required=True, index=True)
 
@@ -45,14 +46,6 @@ class EntryControlAttendanceLog(models.Model):
     # real device logs and system-generated logs. device_timezone remains an
     # audit/context note only and is not added again.
     time_display = fields.Char(string="Time", compute="_compute_time_display", readonly=True)
-
-    # UI-only diagnostic field: shows the current server-side time calculated
-    # with the Entry Control module timezone configuration. This helps verify
-    # whether entry_control.attendance_timezone is really running as expected,
-    # independently from the browser/computer timezone and the current Odoo
-    # user's timezone. Keep it as Char so Odoo does not convert it again.
-    module_time_now = fields.Char(string="Module Time Now", compute="_compute_module_time_runtime", readonly=True)
-    module_timezone_display = fields.Char(string="Module Timezone", compute="_compute_module_time_runtime", readonly=True)
 
     verify_method = fields.Selection([
         ("fingerprint", "Fingerprint"),
@@ -145,6 +138,19 @@ class EntryControlAttendanceLog(models.Model):
                 OR ir_config_parameter.value IN ('UTC', 'Etc/UTC', 'GMT', 'GMT0')
             """,
             (self._CONFIG_ATTENDANCE_TIMEZONE, self._DEFAULT_ATTENDANCE_TIMEZONE),
+        )
+
+        # System-generated Attendance Logs should display an empty Device Timezone.
+        # Older debug builds used "0" as a marker; normalize those existing rows
+        # during upgrade without deleting/rebuilding any Attendance Logs.
+        self.env.cr.execute(
+            """
+            UPDATE entry_control_attendance_log
+               SET device_timezone = NULL
+             WHERE (verify_method = 'system_generated' OR check_type = 'system_generated')
+               AND device_timezone IS NOT NULL
+               AND device_timezone <> ''
+            """
         )
 
     @api.model
@@ -269,41 +275,66 @@ class EntryControlAttendanceLog(models.Model):
             return dt.astimezone(timezone.utc).replace(tzinfo=None)
         return dt.replace(tzinfo=None)
 
+    @api.model
+    def _vals_are_system_generated(self, vals):
+        vals = vals or {}
+        return (
+            vals.get("verify_method") == "system_generated"
+            or vals.get("check_type") == "system_generated"
+        )
+
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
+            system_generated = self._vals_are_system_generated(vals)
+            if system_generated:
+                # User requirement: Device Timezone must be empty for system rows.
+                # Do not normalize the empty value into the module timezone.
+                vals["device_timezone"] = False
             if vals.get("check_time"):
+                if not system_generated:
+                    if not vals.get("device_timezone"):
+                        tz_note = self._extract_timezone_note_from_text(vals.get("check_time"))
+                        if tz_note:
+                            vals["device_timezone"] = tz_note
+                    vals["device_timezone"] = self._normalize_device_timezone(vals.get("device_timezone"))
+                if self.env.context.get("entry_control_check_time_is_utc"):
+                    vals["check_time"] = self._normalize_utc_storage_value(vals.get("check_time"))
+                else:
+                    effective_tz = self._attendance_timezone_name() if system_generated else vals.get("device_timezone")
+                    vals["check_time"] = self._normalize_check_time_value(vals.get("check_time"), effective_tz)
+        return super().create(vals_list)
+
+    def write(self, vals):
+        vals = dict(vals or {})
+        explicit_system_generated = self._vals_are_system_generated(vals)
+        existing_system_generated = bool(self) and all(rec._is_system_generated_log() for rec in self)
+        system_generated = explicit_system_generated or existing_system_generated
+        if explicit_system_generated:
+            vals["device_timezone"] = False
+        if vals.get("check_time"):
+            if not system_generated:
                 if not vals.get("device_timezone"):
                     tz_note = self._extract_timezone_note_from_text(vals.get("check_time"))
                     if tz_note:
                         vals["device_timezone"] = tz_note
                 vals["device_timezone"] = self._normalize_device_timezone(vals.get("device_timezone"))
-                if self.env.context.get("entry_control_check_time_is_utc"):
-                    vals["check_time"] = self._normalize_utc_storage_value(vals.get("check_time"))
-                else:
-                    vals["check_time"] = self._normalize_check_time_value(vals.get("check_time"), vals.get("device_timezone"))
-        return super().create(vals_list)
-
-    def write(self, vals):
-        vals = dict(vals or {})
-        if vals.get("check_time"):
-            if not vals.get("device_timezone"):
-                tz_note = self._extract_timezone_note_from_text(vals.get("check_time"))
-                if tz_note:
-                    vals["device_timezone"] = tz_note
-            vals["device_timezone"] = self._normalize_device_timezone(vals.get("device_timezone"))
+            elif "device_timezone" in vals and not vals.get("device_timezone"):
+                vals["device_timezone"] = False
             if self.env.context.get("entry_control_check_time_is_utc"):
                 vals["check_time"] = self._normalize_utc_storage_value(vals.get("check_time"))
             else:
-                vals["check_time"] = self._normalize_check_time_value(vals.get("check_time"), vals.get("device_timezone"))
+                effective_tz = self._attendance_timezone_name() if system_generated else vals.get("device_timezone")
+                vals["check_time"] = self._normalize_check_time_value(vals.get("check_time"), effective_tz)
         return super().write(vals)
 
     @api.model
     def _timezone_offset_delta(self, tz_value=None, base_dt=None):
         """Return UTC offset for a timezone/offset value at a reference time."""
-        tz = self._normalize_device_timezone(tz_value)
-        if tz == self._SYSTEM_GENERATED_TIMEZONE_MARKER:
-            tz = self._attendance_timezone_name()
+        raw_tz = str(tz_value or "").strip()
+        if raw_tz in (self._LEGACY_SYSTEM_GENERATED_TIMEZONE_MARKER, "0:00", "00:00"):
+            raw_tz = ""
+        tz = self._normalize_device_timezone(raw_tz)
         if not tz:
             tz = self._attendance_timezone_name()
         if tz and tz[0:1] in ("+", "-"):
@@ -336,9 +367,10 @@ class EntryControlAttendanceLog(models.Model):
         """
         if not device_timezone:
             return True
-        device_tz = self._normalize_device_timezone(device_timezone)
-        if device_tz == self._SYSTEM_GENERATED_TIMEZONE_MARKER:
+        device_tz = str(device_timezone or "").strip()
+        if device_tz in (self._LEGACY_SYSTEM_GENERATED_TIMEZONE_MARKER, "0:00", "00:00"):
             return True
+        device_tz = self._normalize_device_timezone(device_tz)
         return self._timezone_offset_delta(device_tz, base_dt) == self._timezone_offset_delta(self._attendance_timezone_name(), base_dt)
 
     @api.model
@@ -364,10 +396,11 @@ class EntryControlAttendanceLog(models.Model):
 
     def _is_system_generated_log(self):
         self.ensure_one()
+        tz = str(self.device_timezone or "").strip()
         return (
             self.verify_method == "system_generated"
             or self.check_type == "system_generated"
-            or self.device_timezone == self._SYSTEM_GENERATED_TIMEZONE_MARKER
+            or tz in (self._LEGACY_SYSTEM_GENERATED_TIMEZONE_MARKER, "0:00", "00:00")
         )
 
     @api.depends("check_time", "device_timezone", "verify_method", "check_type")
@@ -399,25 +432,6 @@ class EntryControlAttendanceLog(models.Model):
             except Exception:
                 rec.time_display = base_text
 
-    @api.depends_context("uid", "tz")
-    def _compute_module_time_runtime(self):
-        """Show the current time according to the module timezone.
-
-        This is a diagnostic display only. It is intentionally computed as text
-        using entry_control.attendance_timezone so Odoo's user/browser timezone
-        cannot shift the value again on screen.
-        """
-        tz_name = self._attendance_timezone_name()
-        try:
-            module_now = datetime.now(self._attendance_timezone()).replace(tzinfo=None)
-            module_now_text = module_now.strftime("%Y-%m-%d %H:%M:%S")
-        except Exception:
-            tz_name = self._DEFAULT_ATTENDANCE_TIMEZONE
-            module_now_text = datetime.now(ZoneInfo(tz_name)).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
-        for rec in self:
-            rec.module_timezone_display = tz_name
-            rec.module_time_now = module_now_text
-
     def find_employee_by_pin(self, pin):
         # Legacy fallback only. New API matching should use employee_id =
         # Employee Code / Mã nhân viên.
@@ -448,7 +462,7 @@ class EntryControlAttendanceLog(models.Model):
         This setting is the single fallback timezone for Entry Control. It is
         independent from the current Odoo user's timezone and is used for:
         - controller timestamps that do not carry an explicit timezone;
-        - system-generated Attendance Logs whose device_timezone is marker ``0``;
+        - system-generated Attendance Logs whose Device Timezone is empty;
         - cron/current-business-day calculations.
         """
         try:
@@ -470,10 +484,10 @@ class EntryControlAttendanceLog(models.Model):
         storage and Device Local Time for attendance calculation.
         """
         tz = str(tz_value or "").strip()
+        if tz in (self._LEGACY_SYSTEM_GENERATED_TIMEZONE_MARKER, "0:00", "00:00"):
+            return self._attendance_timezone_name()
         if not tz:
             return self._attendance_timezone_name()
-        if tz in (self._SYSTEM_GENERATED_TIMEZONE_MARKER, "0:00", "00:00"):
-            return self._SYSTEM_GENERATED_TIMEZONE_MARKER
         if tz.upper() == "Z":
             return "+00:00"
         if len(tz) == 3 and tz[0] in "+-" and tz[1:].isdigit():
@@ -485,8 +499,6 @@ class EntryControlAttendanceLog(models.Model):
     @api.model
     def _tzinfo_from_device_timezone(self, tz_value=None):
         tz = self._normalize_device_timezone(tz_value)
-        if tz == self._SYSTEM_GENERATED_TIMEZONE_MARKER:
-            return self._attendance_timezone()
         if tz and tz[0:1] in ("+", "-"):
             sign = 1 if tz[0] == "+" else -1
             body = tz[1:]
@@ -565,15 +577,16 @@ class EntryControlAttendanceLog(models.Model):
     def _device_timezone_for_logs(self, logs):
         """Return the effective timezone for a grouped attendance day.
 
-        System-generated rows intentionally store device_timezone = 0 for UI
-        clarity. That marker must never become the timezone used to calculate
-        business-day bounds; prefer a real device log timezone, then fall back
-        to the module timezone setting.
+        System-generated rows intentionally keep Device Timezone empty for UI
+        clarity. Prefer a real device log timezone, then fall back to the module
+        timezone setting.
         """
         for log in logs:
-            tz = self._normalize_device_timezone(log.device_timezone)
-            if tz and tz != self._SYSTEM_GENERATED_TIMEZONE_MARKER:
-                return tz
+            if log.verify_method == "system_generated" or log.check_type == "system_generated":
+                continue
+            raw_tz = str(log.device_timezone or "").strip()
+            if raw_tz and raw_tz not in (self._LEGACY_SYSTEM_GENERATED_TIMEZONE_MARKER, "0:00", "00:00"):
+                return self._normalize_device_timezone(raw_tz)
         return self._attendance_timezone_name()
 
     @api.model
@@ -809,8 +822,8 @@ class EntryControlAttendanceLog(models.Model):
         """
         # local_dt is the intended MODULE-local boundary time, not device-local
         # time. System-generated 23:59 / 00:00 rows must be calculated only from
-        # the module timezone setting, then saved with device_timezone = 0 as a
-        # marker. Do not copy/use source_log.device_timezone here; otherwise the
+        # the module timezone setting, then saved with an empty Device Timezone.
+        # Do not copy/use source_log.device_timezone here; otherwise the
         # same system row can shift when the real device log carries another
         # offset.
         # Example with module timezone Asia/Ho_Chi_Minh:
@@ -826,15 +839,15 @@ class EntryControlAttendanceLog(models.Model):
         ]
         existing = self.sudo().search(domain, limit=1)
         if existing:
-            if existing.device_timezone != self._SYSTEM_GENERATED_TIMEZONE_MARKER:
-                existing.with_context(entry_control_check_time_is_utc=True).write({"device_timezone": self._SYSTEM_GENERATED_TIMEZONE_MARKER})
+            if existing.device_timezone:
+                existing.with_context(entry_control_check_time_is_utc=True).write({"device_timezone": False})
             return existing
         message = self._make_system_log_message(direction, local_dt, reason)
         vals = {
             "controller_id": source_log.controller_id.id if source_log.controller_id else False,
             "device_id": source_log.device_id.id if source_log.device_id else False,
             "serial_number": source_log.serial_number or (source_log.device_id.serial_number if source_log.device_id else ""),
-            "device_timezone": self._SYSTEM_GENERATED_TIMEZONE_MARKER,
+            "device_timezone": False,
             "employee_id": source_log.employee_id.id,
             "direction": direction,
             "check_time": check_time,
@@ -1082,8 +1095,8 @@ class EntryControlAttendanceLog(models.Model):
 
         Examples with device_timezone +07:00:
         - Real device log: 03:29 UTC -> UI shows 10:29 local.
-        - System 23:59 local: Attendance Logs stores 16:59 UTC and device_timezone 0 -> UI shows 23:59 local.
-        - System 00:00 local: Attendance Logs stores 17:00 UTC previous day and device_timezone 0 -> UI shows 00:00 local.
+        - System 23:59 local: Attendance Logs stores 16:59 UTC and device_timezone empty -> UI shows 23:59 local.
+        - System 00:00 local: Attendance Logs stores 17:00 UTC previous day and device_timezone empty -> UI shows 00:00 local.
         """
         if not log or not log.check_time:
             return False
@@ -1167,8 +1180,8 @@ class EntryControlAttendanceLog(models.Model):
             #
             # Correct behavior:
             #   Real log:    check_time 03:29 + device_timezone +07 -> UI 10:29
-            #   System log:  check_time 16:59 + device_timezone 0 -> UI 23:59
-            #   System log:  check_time 17:00 previous day + device_timezone 0 -> UI 00:00 next day
+            #   System log:  check_time 16:59 + device_timezone empty -> UI 23:59
+            #   System log:  check_time 17:00 previous day + device_timezone empty -> UI 00:00 next day
             check_in = Log._hr_attendance_utc_from_log(first_in_log)
             check_out = Log._hr_attendance_utc_from_log(last_out_log) if last_out_log else False
 

@@ -42,8 +42,6 @@
                 <field name="employee_id"/>
                 <field name="direction" widget="badge" decoration-success="direction == 'in'" decoration-info="direction == 'out'"/>
                 <field name="time_display" string="Time"/>
-                <field name="module_time_now" string="Module Time Now" optional="show"/>
-                <field name="module_timezone_display" string="Module Timezone" optional="show"/>
                 <field name="serial_number" string="Device"/>
                 <field name="device_timezone" optional="show"/>
                 <field name="verify_method"/>
@@ -69,8 +67,6 @@
                         <group string="Attendance">
                             <field name="direction"/>
                             <field name="time_display" string="Time" readonly="1"/>
-                            <field name="module_time_now" string="Module Time Now" readonly="1"/>
-                            <field name="module_timezone_display" string="Module Timezone" readonly="1"/>
                             <field name="check_time" string="Check Time (UTC Storage)" readonly="1"/>
                             <field name="verify_method"/>
                             <field name="verify_type"/>

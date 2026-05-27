@@ -79,9 +79,7 @@
                                     <field name="employee_id"/>
                                     <field name="direction" widget="badge"/>
                                     <field name="time_display" string="Time"/>
-                                    <field name="module_time_now" string="Module Time Now" optional="show"/>
-                                    <field name="module_timezone_display" string="Module Timezone" optional="show"/>
-                                    <field name="serial_number" string="Device"/>
+                                                                            <field name="serial_number" string="Device"/>
                                     <field name="verify_method"/>
                                     <field name="sync_status" widget="badge"/>
                                 </list>
