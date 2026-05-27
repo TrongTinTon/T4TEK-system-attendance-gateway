@@ -10,3 +10,5 @@ access_entry_control_attendance_log_admin,entry.control.attendance.log admin,mod
 
 access_entry_control_create_attendance_wizard_system,entry.control.create.attendance.wizard system,model_entry_control_create_attendance_wizard,base.group_system,1,1,1,1
 access_entry_control_create_attendance_wizard_admin,entry.control.create.attendance.wizard admin,model_entry_control_create_attendance_wizard,t4tek_entry_control.group_entry_control_admin,1,1,1,1
+access_entry_control_settings_system,entry.control.settings system,model_entry_control_settings,base.group_system,1,1,1,1
+access_entry_control_settings_admin,entry.control.settings admin,model_entry_control_settings,t4tek_entry_control.group_entry_control_admin,1,1,1,1

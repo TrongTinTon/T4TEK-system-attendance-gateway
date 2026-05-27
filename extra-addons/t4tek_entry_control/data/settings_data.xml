@@ -1,0 +1,3 @@
+<odoo>
+    <!-- Intentionally empty. Timezone default is handled in Python fallback and Settings save action. -->
+</odoo>

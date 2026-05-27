@@ -41,9 +41,9 @@
                 </header>
                 <field name="employee_id"/>
                 <field name="direction" widget="badge" decoration-success="direction == 'in'" decoration-info="direction == 'out'"/>
-                <field name="check_time_stored_display" string="Check Time DB UTC" optional="show"/>
-                <field name="check_time_display" string="Check Time Device Local" optional="show"/>
-                <field name="check_time" string="Check Time (Odoo Datetime)" optional="hide"/>
+                <field name="time_display" string="Time"/>
+                <field name="module_time_now" string="Module Time Now" optional="show"/>
+                <field name="module_timezone_display" string="Module Timezone" optional="show"/>
                 <field name="serial_number" string="Device"/>
                 <field name="device_timezone" optional="show"/>
                 <field name="verify_method"/>
@@ -68,9 +68,10 @@
                         </group>
                         <group string="Attendance">
                             <field name="direction"/>
-                            <field name="check_time_stored_display" string="Check Time DB UTC" readonly="1"/>
-                            <field name="check_time_display" string="Check Time Device Local" readonly="1"/>
-                            <field name="check_time" string="Check Time (Odoo Datetime)" readonly="1"/>
+                            <field name="time_display" string="Time" readonly="1"/>
+                            <field name="module_time_now" string="Module Time Now" readonly="1"/>
+                            <field name="module_timezone_display" string="Module Timezone" readonly="1"/>
+                            <field name="check_time" string="Check Time (UTC Storage)" readonly="1"/>
                             <field name="verify_method"/>
                             <field name="verify_type"/>
                         </group>

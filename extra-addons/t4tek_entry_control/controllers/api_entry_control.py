@@ -234,7 +234,14 @@ class EntryControlAPI(http.Controller):
 
     @http.route("/api/entry_control/v1/health", type="http", auth="none", methods=["GET", "POST"], csrf=False)
     def health(self, **kwargs):
-        return self._json_response({"ok": True, "service": "t4tek_entry_control", "status": "running", "server_time": fields.Datetime.to_string(fields.Datetime.now())})
+        attendance_timezone = request.env["entry.control.attendance.log"].sudo()._attendance_timezone_name()
+        return self._json_response({
+            "ok": True,
+            "service": "t4tek_entry_control",
+            "status": "running",
+            "attendance_timezone": attendance_timezone,
+            "server_time": fields.Datetime.to_string(fields.Datetime.now()),
+        })
 
     @http.route("/api/entry_control/v1/auth/token", type="http", auth="none", methods=["POST"], csrf=False)
     def auth_token(self, **kwargs):
@@ -547,7 +554,9 @@ class EntryControlAPI(http.Controller):
                         expected_display = expected_dt.strftime("%m/%d/%Y %H:%M:%S") if expected_dt else ""
                     except Exception:
                         expected_display = ""
-                device_local_display = rec.check_time_display or ""
+                stored_display = fields.Datetime.to_string(rec.check_time) if rec.check_time else ""
+                local_dt = rec._utc_naive_to_local(rec.check_time, rec.device_timezone) if rec.check_time else False
+                device_local_display = local_dt.strftime("%m/%d/%Y %H:%M:%S") if local_dt else ""
                 results.append({
                     "index": idx,
                     "local_id": prepared_log.get("local_id") or prepared_log.get("id"),
@@ -556,11 +565,13 @@ class EntryControlAPI(http.Controller):
                     "status": "success" if rec.sync_status != "failed" else "failed",
                     "message": rec.error_message or "",
                     "direction": rec.direction,
-                    "check_time_db_utc": rec.check_time_stored_display or fields.Datetime.to_string(rec.check_time),
-                    "check_time_stored": rec.check_time_stored_display or fields.Datetime.to_string(rec.check_time),
+                    "check_time": stored_display,
+                    "check_time_db_utc": stored_display,
+                    "check_time_stored": stored_display,
                     "check_time_device_local": device_local_display,
                     "check_time_display": device_local_display,
                     "device_timezone": rec.device_timezone,
+                    "module_timezone": rec._attendance_timezone_name(),
                     "pre_save_timezone_check": tz_debug,
                     "timezone_validation_ok": bool(not expected_display or device_local_display == expected_display),
                     "duplicate": duplicate,

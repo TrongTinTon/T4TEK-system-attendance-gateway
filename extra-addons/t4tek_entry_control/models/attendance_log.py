@@ -16,6 +16,10 @@ class EntryControlAttendanceLog(models.Model):
     _description = "Entry Control Attendance Log"
     _order = "check_time desc, id desc"
 
+    _DEFAULT_ATTENDANCE_TIMEZONE = "Asia/Ho_Chi_Minh"
+    _CONFIG_ATTENDANCE_TIMEZONE = "entry_control.attendance_timezone"
+    _SYSTEM_GENERATED_TIMEZONE_MARKER = "0"
+
     controller_id = fields.Many2one("entry.control.controller", ondelete="set null", index=True)
     device_id = fields.Many2one("entry.control.device", string="Device Record", ondelete="set null", index=True)
     serial_number = fields.Char(string="Device", index=True, readonly=True)
@@ -28,15 +32,27 @@ class EntryControlAttendanceLog(models.Model):
     # Single persisted Check Time column for Attendance Logs.
     # It follows Odoo's normal Datetime rule: stored as UTC-naive in DB.
     # Example controller value `2026-05-27 09:45:23+07` is stored as
-    # `2026-05-27 02:45:23` in check_time, while device_timezone keeps `+07:00`.
-    # Attendance Logs display and attendance grouping convert this UTC value
-    # back to Device Local Time using device_timezone.
+    # `2026-05-27 02:45:23` in check_time, while device_timezone keeps the
+    # device offset note for real logs. System-generated logs keep
+    # device_timezone = 0 and use the module timezone configuration for
+    # local-day / boundary calculation.
     check_time = fields.Datetime(string="Check Time", required=True, index=True)
-    # UI-only debug displays. These are NOT stored in the database, so the model
-    # still has only one persisted Check Time column. They help compare the raw
-    # value stored in check_time versus the formatted display used on UI.
-    check_time_stored_display = fields.Char(string="Check Time Stored", compute="_compute_check_time_debug_fields")
-    check_time_display = fields.Char(string="Check Time Display", compute="_compute_check_time_debug_fields")
+
+    # UI-only module-local time. Keep it as Char so Odoo does not apply the
+    # current user's timezone a second time.
+    # Formula: convert canonical Check Time (UTC-naive) to Module Timezone.
+    # This is intentionally based on entry_control.attendance_timezone for both
+    # real device logs and system-generated logs. device_timezone remains an
+    # audit/context note only and is not added again.
+    time_display = fields.Char(string="Time", compute="_compute_time_display", readonly=True)
+
+    # UI-only diagnostic field: shows the current server-side time calculated
+    # with the Entry Control module timezone configuration. This helps verify
+    # whether entry_control.attendance_timezone is really running as expected,
+    # independently from the browser/computer timezone and the current Odoo
+    # user's timezone. Keep it as Char so Odoo does not convert it again.
+    module_time_now = fields.Char(string="Module Time Now", compute="_compute_module_time_runtime", readonly=True)
+    module_timezone_display = fields.Char(string="Module Timezone", compute="_compute_module_time_runtime", readonly=True)
 
     verify_method = fields.Selection([
         ("fingerprint", "Fingerprint"),
@@ -65,7 +81,20 @@ class EntryControlAttendanceLog(models.Model):
         # Remove heavy/duplicated fields from earlier builds. Odoo does not
         # always drop old columns automatically on upgrade, so do it explicitly.
         self.env.cr.execute("ALTER TABLE IF EXISTS entry_control_attendance_log DROP CONSTRAINT IF EXISTS attendance_event_hash_unique")
-        for column in ("event_hash", "pin", "direction_source", "device_direction", "device_check_type", "is_system_generated", "check_time_local", "device_check_time"):
+        for column in (
+            "event_hash",
+            "pin",
+            "direction_source",
+            "device_direction",
+            "device_check_type",
+            "is_system_generated",
+            "check_time_local",
+            "device_check_time",
+            "check_time_stored_display",
+            "check_time_display",
+            "check_time_db_utc",
+            "check_time_device_local",
+        ):
             self.env.cr.execute('ALTER TABLE IF EXISTS entry_control_attendance_log DROP COLUMN IF EXISTS "%s"' % column)
         # Backfill the canonical serial_number field on upgrades. Older builds
         # used a device_serial_number column; copy it first, then fall back to
@@ -94,6 +123,29 @@ class EntryControlAttendanceLog(models.Model):
                AND (l.serial_number IS NULL OR l.serial_number = '')
         """)
         self.env.cr.execute('ALTER TABLE IF EXISTS entry_control_attendance_log DROP COLUMN IF EXISTS "device_serial_number"')
+
+        # Keep the module timezone deterministic after upgrades. Older builds or
+        # tests may have left entry_control.attendance_timezone as UTC, which
+        # makes the Time column show UTC instead of Vietnam local time. Do this
+        # with SQL UPSERT so upgrades never hit duplicate ir.config_parameter
+        # errors. Only empty/UTC-like values are corrected; valid custom
+        # non-UTC timezones are preserved.
+        self.env.cr.execute(
+            """
+            INSERT INTO ir_config_parameter
+                (key, value, create_uid, create_date, write_uid, write_date)
+            VALUES
+                (%s, %s, 1, NOW(), 1, NOW())
+            ON CONFLICT (key) DO UPDATE
+               SET value = EXCLUDED.value,
+                   write_uid = 1,
+                   write_date = NOW()
+             WHERE ir_config_parameter.value IS NULL
+                OR ir_config_parameter.value = ''
+                OR ir_config_parameter.value IN ('UTC', 'Etc/UTC', 'GMT', 'GMT0')
+            """,
+            (self._CONFIG_ATTENDANCE_TIMEZONE, self._DEFAULT_ATTENDANCE_TIMEZONE),
+        )
 
     @api.model
     def _employee_code_fields(self):
@@ -135,24 +187,6 @@ class EntryControlAttendanceLog(models.Model):
             return Employee.browse(int(raw)).exists()
         except Exception:
             return Employee.browse()
-
-    @api.depends("check_time", "device_timezone")
-    def _compute_check_time_debug_fields(self):
-        """Show check_time two ways for timezone/debug verification.
-
-        - check_time_stored_display: exact UTC-naive value stored by Odoo.
-        - check_time_display: the same value converted to Device Local Time.
-
-        Example: controller sends 2026-05-27 09:45:23+07.
-        DB stores check_time = 2026-05-27 02:45:23, and Device Local display
-        shows 05/27/2026 09:45:23.
-        """
-        for rec in self:
-            dt = fields.Datetime.to_datetime(rec.check_time)
-            stored = fields.Datetime.to_string(dt) if dt else False
-            local_dt = rec._utc_naive_to_local(dt, rec.device_timezone) if dt else False
-            rec.check_time_stored_display = stored
-            rec.check_time_display = local_dt.strftime("%m/%d/%Y %H:%M:%S") if local_dt else False
 
     @api.model
     def _extract_timezone_note_from_text(self, value):
@@ -264,6 +298,126 @@ class EntryControlAttendanceLog(models.Model):
                 vals["check_time"] = self._normalize_check_time_value(vals.get("check_time"), vals.get("device_timezone"))
         return super().write(vals)
 
+    @api.model
+    def _timezone_offset_delta(self, tz_value=None, base_dt=None):
+        """Return UTC offset for a timezone/offset value at a reference time."""
+        tz = self._normalize_device_timezone(tz_value)
+        if tz == self._SYSTEM_GENERATED_TIMEZONE_MARKER:
+            tz = self._attendance_timezone_name()
+        if not tz:
+            tz = self._attendance_timezone_name()
+        if tz and tz[0:1] in ("+", "-"):
+            sign = 1 if tz[0] == "+" else -1
+            body = tz[1:]
+            try:
+                if ":" in body:
+                    hh, mm = body.split(":", 1)
+                else:
+                    hh, mm = body[:2], body[2:] or "0"
+                return sign * timedelta(hours=int(hh), minutes=int(mm))
+            except Exception:
+                return timedelta(0)
+        try:
+            tzinfo = ZoneInfo(tz)
+            ref = fields.Datetime.to_datetime(base_dt) or datetime.utcnow()
+            if not ref.tzinfo:
+                ref = ref.replace(tzinfo=timezone.utc)
+            return tzinfo.utcoffset(ref) or timedelta(0)
+        except Exception:
+            return timedelta(0)
+
+    @api.model
+    def _device_timezone_matches_module(self, device_timezone=None, base_dt=None):
+        """Check whether the device offset matches the module timezone offset.
+
+        Example: ``+07:00`` matches ``Asia/Ho_Chi_Minh`` at the same reference
+        timestamp. This check is diagnostic only; parsing still trusts the
+        explicit offset carried by the controller timestamp.
+        """
+        if not device_timezone:
+            return True
+        device_tz = self._normalize_device_timezone(device_timezone)
+        if device_tz == self._SYSTEM_GENERATED_TIMEZONE_MARKER:
+            return True
+        return self._timezone_offset_delta(device_tz, base_dt) == self._timezone_offset_delta(self._attendance_timezone_name(), base_dt)
+
+    @api.model
+    def _format_check_time_in_module_timezone(self, value):
+        """Format canonical UTC-naive check_time in the module timezone.
+
+        This is the only display rule for the Time column:
+            Time = check_time (UTC storage) -> entry_control.attendance_timezone
+
+        It does not use the Odoo user's timezone and it does not add
+        device_timezone again. A controller timestamp such as
+        2026-05-27 13:18:00+07 is stored as 2026-05-27 06:18:00 UTC-naive and
+        is displayed here as 2026-05-27 13:18:00 when the module timezone is
+        Asia/Ho_Chi_Minh.
+        """
+        dt = fields.Datetime.to_datetime(value)
+        if not dt:
+            return False
+        # Odoo Datetime storage is UTC-naive. Treat any naive datetime as UTC.
+        dt_utc = dt.astimezone(timezone.utc) if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        local_dt = dt_utc.astimezone(self._attendance_timezone()).replace(tzinfo=None)
+        return local_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    def _is_system_generated_log(self):
+        self.ensure_one()
+        return (
+            self.verify_method == "system_generated"
+            or self.check_type == "system_generated"
+            or self.device_timezone == self._SYSTEM_GENERATED_TIMEZONE_MARKER
+        )
+
+    @api.depends("check_time", "device_timezone", "verify_method", "check_type")
+    def _compute_time_display(self):
+        """Display the business Time column in the module timezone.
+
+        Keep the rule intentionally simple for UI:
+        - system-generated boundary logs keep the canonical conversion so
+          16:59 UTC -> 23:59 and 17:00 UTC -> 00:00 in Asia/Ho_Chi_Minh;
+        - real device logs show Check Time plus the module timezone offset.
+
+        This matches the operational screen where Check Time is the UTC-storage
+        clock value and Time is the human business time according to the module
+        timezone, independent from the user's/browser's timezone.
+        """
+        module_tz = self._attendance_timezone_name()
+        for rec in self:
+            base_text = rec._format_check_time_in_module_timezone(rec.check_time)
+            if not base_text:
+                rec.time_display = False
+                continue
+            if rec._is_system_generated_log():
+                rec.time_display = base_text
+                continue
+            try:
+                base_dt = fields.Datetime.to_datetime(base_text) or date_parser.parse(base_text)
+                offset = rec._timezone_offset_delta(module_tz, base_dt)
+                rec.time_display = (base_dt + offset).strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                rec.time_display = base_text
+
+    @api.depends_context("uid", "tz")
+    def _compute_module_time_runtime(self):
+        """Show the current time according to the module timezone.
+
+        This is a diagnostic display only. It is intentionally computed as text
+        using entry_control.attendance_timezone so Odoo's user/browser timezone
+        cannot shift the value again on screen.
+        """
+        tz_name = self._attendance_timezone_name()
+        try:
+            module_now = datetime.now(self._attendance_timezone()).replace(tzinfo=None)
+            module_now_text = module_now.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            tz_name = self._DEFAULT_ATTENDANCE_TIMEZONE
+            module_now_text = datetime.now(ZoneInfo(tz_name)).replace(tzinfo=None).strftime("%Y-%m-%d %H:%M:%S")
+        for rec in self:
+            rec.module_timezone_display = tz_name
+            rec.module_time_now = module_now_text
+
     def find_employee_by_pin(self, pin):
         # Legacy fallback only. New API matching should use employee_id =
         # Employee Code / Mã nhân viên.
@@ -278,24 +432,34 @@ class EntryControlAttendanceLog(models.Model):
         return Employee.browse()
 
     @api.model
-    def _attendance_timezone_name(self):
-        """Business timezone used when no device timezone is supplied.
+    def _sanitize_attendance_timezone_name(self, value=None):
+        """Return a valid IANA timezone name for module-level calculations."""
+        tz_name = str(value or "").strip() or self._DEFAULT_ATTENDANCE_TIMEZONE
+        try:
+            ZoneInfo(tz_name)
+            return tz_name
+        except Exception:
+            return self._DEFAULT_ATTENDANCE_TIMEZONE
 
-        Attendance Logs store UTC-naive values in check_time. This timezone is
-        only the fallback used when a device does not send an explicit timezone.
+    @api.model
+    def _attendance_timezone_name(self):
+        """Module business timezone.
+
+        This setting is the single fallback timezone for Entry Control. It is
+        independent from the current Odoo user's timezone and is used for:
+        - controller timestamps that do not carry an explicit timezone;
+        - system-generated Attendance Logs whose device_timezone is marker ``0``;
+        - cron/current-business-day calculations.
         """
         try:
-            value = self.env["ir.config_parameter"].sudo().get_param("entry_control.attendance_timezone")
+            value = self.env["ir.config_parameter"].sudo().get_param(self._CONFIG_ATTENDANCE_TIMEZONE)
         except Exception:
             value = False
-        return value or "Asia/Ho_Chi_Minh"
+        return self._sanitize_attendance_timezone_name(value)
 
     @api.model
     def _attendance_timezone(self):
-        try:
-            return ZoneInfo(self._attendance_timezone_name())
-        except Exception:
-            return ZoneInfo("Asia/Ho_Chi_Minh")
+        return ZoneInfo(self._attendance_timezone_name())
 
     @api.model
     def _normalize_device_timezone(self, tz_value=None):
@@ -308,6 +472,8 @@ class EntryControlAttendanceLog(models.Model):
         tz = str(tz_value or "").strip()
         if not tz:
             return self._attendance_timezone_name()
+        if tz in (self._SYSTEM_GENERATED_TIMEZONE_MARKER, "0:00", "00:00"):
+            return self._SYSTEM_GENERATED_TIMEZONE_MARKER
         if tz.upper() == "Z":
             return "+00:00"
         if len(tz) == 3 and tz[0] in "+-" and tz[1:].isdigit():
@@ -319,6 +485,8 @@ class EntryControlAttendanceLog(models.Model):
     @api.model
     def _tzinfo_from_device_timezone(self, tz_value=None):
         tz = self._normalize_device_timezone(tz_value)
+        if tz == self._SYSTEM_GENERATED_TIMEZONE_MARKER:
+            return self._attendance_timezone()
         if tz and tz[0:1] in ("+", "-"):
             sign = 1 if tz[0] == "+" else -1
             body = tz[1:]
@@ -395,9 +563,17 @@ class EntryControlAttendanceLog(models.Model):
 
     @api.model
     def _device_timezone_for_logs(self, logs):
+        """Return the effective timezone for a grouped attendance day.
+
+        System-generated rows intentionally store device_timezone = 0 for UI
+        clarity. That marker must never become the timezone used to calculate
+        business-day bounds; prefer a real device log timezone, then fall back
+        to the module timezone setting.
+        """
         for log in logs:
-            if log.device_timezone:
-                return log.device_timezone
+            tz = self._normalize_device_timezone(log.device_timezone)
+            if tz and tz != self._SYSTEM_GENERATED_TIMEZONE_MARKER:
+                return tz
         return self._attendance_timezone_name()
 
     @api.model
@@ -561,6 +737,12 @@ class EntryControlAttendanceLog(models.Model):
             or data.get("tz")
         )
         check_dt, parsed_tz = self._parse_dt(check_raw, timezone_hint=timezone_hint)
+        if parsed_tz and not self._device_timezone_matches_module(parsed_tz, check_dt):
+            _logger.warning(
+                "[ENTRY CONTROL] Device timezone %s does not match module timezone %s for check_time=%s. "
+                "The explicit controller offset is used for UTC storage; Time column displays in module timezone.",
+                parsed_tz, self._attendance_timezone_name(), check_raw,
+            )
         check_type = str(data.get("check_type") or data.get("checkType") or "").strip()
         verify_type = str(data.get("verify_type") or data.get("verifyType") or "").strip()
 
@@ -625,11 +807,17 @@ class EntryControlAttendanceLog(models.Model):
         Therefore missing boundary events must be represented as log rows, not
         silently inferred while writing hr.attendance.
         """
-        # local_dt is the intended device-local boundary time. Store it in
-        # Odoo UTC-naive format, with device_timezone carrying the source offset.
-        # Example: 2026-05-27 23:59 +07:00 => check_time 2026-05-27 16:59.
-        device_tz = self._normalize_device_timezone(source_log.device_timezone or self._attendance_timezone_name())
-        check_time = self._local_naive_to_utc(local_dt, device_tz)
+        # local_dt is the intended MODULE-local boundary time, not device-local
+        # time. System-generated 23:59 / 00:00 rows must be calculated only from
+        # the module timezone setting, then saved with device_timezone = 0 as a
+        # marker. Do not copy/use source_log.device_timezone here; otherwise the
+        # same system row can shift when the real device log carries another
+        # offset.
+        # Example with module timezone Asia/Ho_Chi_Minh:
+        #   2026-05-27 23:59 local => check_time 2026-05-27 16:59 UTC-naive.
+        #   2026-05-28 00:00 local => check_time 2026-05-27 17:00 UTC-naive.
+        calculation_tz = self._attendance_timezone_name()
+        check_time = self._local_naive_to_utc(local_dt, calculation_tz)
         domain = [
             ("employee_id", "=", source_log.employee_id.id),
             ("check_time", "=", check_time),
@@ -638,13 +826,15 @@ class EntryControlAttendanceLog(models.Model):
         ]
         existing = self.sudo().search(domain, limit=1)
         if existing:
+            if existing.device_timezone != self._SYSTEM_GENERATED_TIMEZONE_MARKER:
+                existing.with_context(entry_control_check_time_is_utc=True).write({"device_timezone": self._SYSTEM_GENERATED_TIMEZONE_MARKER})
             return existing
         message = self._make_system_log_message(direction, local_dt, reason)
         vals = {
             "controller_id": source_log.controller_id.id if source_log.controller_id else False,
             "device_id": source_log.device_id.id if source_log.device_id else False,
             "serial_number": source_log.serial_number or (source_log.device_id.serial_number if source_log.device_id else ""),
-            "device_timezone": device_tz,
+            "device_timezone": self._SYSTEM_GENERATED_TIMEZONE_MARKER,
             "employee_id": source_log.employee_id.id,
             "direction": direction,
             "check_time": check_time,
@@ -689,81 +879,83 @@ class EntryControlAttendanceLog(models.Model):
 
     @api.model
     def _ensure_continuous_logs_for_days(self, logs):
-        """Insert missing 23:59 Check Out and 00:00 next-day Check In logs.
+        """Create missing system boundary logs without rebuilding/deleting data.
 
-        Attendance Logs are stored in UTC, but business days are determined by
-        each log's device_timezone. This method therefore searches a broad UTC
-        window, then groups/rebuilds rows by Device Local Day in Python.
+        Simple workflow:
+        - Do not delete existing Attendance Logs.
+        - Do not delete/recreate old system logs on every run.
+        - Only create a missing 23:59 Check Out for a completed business day
+          whose last log is Check In.
+        - Only create the carry-over 00:00 Check In for the next day when that
+          next day has no real device log yet.
+        - Never create 23:59/00:00 for the current or future business day.
         """
         Log = self.sudo()
         logs = Log.browse(logs.ids).filtered(lambda r: r.employee_id and r.check_time)
         if not logs:
             return logs
+
         employees = logs.mapped("employee_id")
-        original_min_day = min(Log._business_day_from_log(l) for l in logs)
-        original_max_day = max(Log._business_day_from_log(l) for l in logs)
-        min_local_day = original_min_day - timedelta(days=1)
-        max_local_day = original_max_day
+        selected_days = [Log._business_day_from_log(l) for l in logs if l.check_time]
+        selected_days = [d for d in selected_days if d]
+        if not selected_days:
+            return logs
+
+        min_local_day = min(selected_days) - timedelta(days=1)
+        max_local_day = max(selected_days)
+        today = Log._business_now_date()
         search_from, search_to = Log._broad_utc_search_bounds_for_local_days(min_local_day, max_local_day + timedelta(days=1))
+
         affected = Log.browse()
         for employee in employees:
-            stale_system_logs = Log.search([
-                ("employee_id", "=", employee.id),
-                ("check_type", "=", "system_generated"),
-                ("verify_method", "=", "system_generated"),
-                ("check_time", ">=", search_from),
-                ("check_time", "<=", search_to),
-            ])
-            if stale_system_logs:
-                stale_system_logs.unlink()
-
-            emp_logs = Log._resequence_employee_logs(employee, search_from, search_to)
-            affected |= emp_logs
+            # Keep direction continuous, but do not remove any database rows.
+            affected |= Log._resequence_employee_logs(employee, search_from, search_to)
 
             day = min_local_day
             while day <= max_local_day:
-                # Recompute directions and refresh the window on every business
-                # day. This is important when a system 23:59 Check Out is added
-                # for the previous day: that new boundary changes the expected
-                # direction of the next real log. Without this refresh, a real
-                # Check In on the next day could still be seen as Check Out and
-                # the next day's missing 23:59 boundary would not be created.
-                Log._resequence_employee_logs(employee, search_from, search_to)
+                # No future system logs. Today's 23:59/next 00:00 must wait
+                # until the day is completed.
+                if day >= today:
+                    day += timedelta(days=1)
+                    continue
+
                 emp_logs = Log.search([
                     ("employee_id", "=", employee.id),
                     ("check_time", ">=", search_from),
                     ("check_time", "<=", search_to),
                 ], order="check_time asc, id asc")
-
                 day_logs = emp_logs.filtered(lambda r, d=day: Log._business_day_from_log(r) == d).sorted(key=lambda r: (r.check_time, r.id))
-                if day_logs:
+
+                if day_logs and day_logs[-1].direction == "in":
                     last_log = day_logs[-1]
-                    if last_log.direction == "in":
-                        checkout_local = datetime.combine(day, time(23, 59, 0))
-                        next_checkin_local = datetime.combine(day + timedelta(days=1), time(0, 0, 0))
+                    checkout_local = datetime.combine(day, time(23, 59, 0))
+                    next_checkin_local = datetime.combine(day + timedelta(days=1), time(0, 0, 0))
+
+                    affected |= Log._find_or_create_system_log(
+                        last_log,
+                        "out",
+                        checkout_local,
+                        _("missing Check Out at the end of the day"),
+                    )
+
+                    # After creating 23:59, resequence only; do not delete.
+                    affected |= Log._resequence_employee_logs(employee, search_from, search_to)
+                    emp_logs = Log.search([
+                        ("employee_id", "=", employee.id),
+                        ("check_time", ">=", search_from),
+                        ("check_time", "<=", search_to),
+                    ], order="check_time asc, id asc")
+                    next_day_real_logs = emp_logs.filtered(
+                        lambda r, nd=day + timedelta(days=1): r.verify_method != "system_generated" and Log._business_day_from_log(r) == nd
+                    )
+                    if not next_day_real_logs:
                         affected |= Log._find_or_create_system_log(
                             last_log,
-                            "out",
-                            checkout_local,
-                            _("missing Check Out at the end of the day"),
+                            "in",
+                            next_checkin_local,
+                            _("carry-over Check In for the next day after a system-generated 23:59 Check Out"),
                         )
-                        # Refresh after adding 23:59 so the next-day check is
-                        # based on the latest records in the same UTC window.
-                        emp_logs = Log.search([
-                            ("employee_id", "=", employee.id),
-                            ("check_time", ">=", search_from),
-                            ("check_time", "<=", search_to),
-                        ], order="check_time asc, id asc")
-                        next_day_real_logs = emp_logs.filtered(
-                            lambda r, nd=day + timedelta(days=1): r.verify_method != "system_generated" and Log._business_day_from_log(r) == nd
-                        )
-                        if not next_day_real_logs:
-                            affected |= Log._find_or_create_system_log(
-                                last_log,
-                                "in",
-                                next_checkin_local,
-                                _("carry-over Check In for the next day after a system-generated 23:59 Check Out"),
-                            )
+
                 day += timedelta(days=1)
 
             affected |= Log._resequence_employee_logs(employee, search_from, search_to)
@@ -812,7 +1004,7 @@ class EntryControlAttendanceLog(models.Model):
             ).action_sync_hr_attendance()
 
         params = self.env["ir.config_parameter"].sudo()
-        params.set_param("entry_control.attendance_timezone", self._attendance_timezone_name())
+        params.set_param(self._CONFIG_ATTENDANCE_TIMEZONE, self._attendance_timezone_name())
         params.set_param("entry_control.last_daily_attendance_cron_at", fields.Datetime.to_string(fields.Datetime.now()))
         params.set_param("entry_control.last_daily_attendance_cron_date", "%s..%s" % (day_from, day_to))
         params.set_param("entry_control.last_daily_attendance_cron_log_count", str(len(logs)))
@@ -882,6 +1074,26 @@ class EntryControlAttendanceLog(models.Model):
             stale.unlink()
         return stale
 
+    @api.model
+    def _hr_attendance_utc_from_log(self, log):
+        """Return the exact UTC-naive value to write to hr.attendance.
+
+        Attendance Logs.check_time is the canonical UTC-naive source.
+        device_timezone is used to understand/display Device Local Time and to
+        calculate business days, but it must not be added again before writing
+        to hr.attendance because hr.attendance.check_in/check_out are also Odoo
+        Datetime fields stored as UTC-naive.
+
+        Examples with device_timezone +07:00:
+        - Real device log: 03:29 UTC -> UI shows 10:29 local.
+        - System 23:59 local: Attendance Logs stores 16:59 UTC and device_timezone 0 -> UI shows 23:59 local.
+        - System 00:00 local: Attendance Logs stores 17:00 UTC previous day and device_timezone 0 -> UI shows 00:00 local.
+        """
+        if not log or not log.check_time:
+            return False
+        dt = fields.Datetime.to_datetime(log.check_time)
+        return dt.replace(tzinfo=None) if dt else False
+
     def action_sync_hr_attendance(self):
         # Attendance calculation rule:
         # 1) Attendance Logs are the source of truth.
@@ -891,6 +1103,9 @@ class EntryControlAttendanceLog(models.Model):
         # 3) Then create/update one CLOSED hr.attendance per Employee + Device Local business day:
         #      - check_in  = first Check In log of that business day
         #      - check_out = last Check Out log of that business day
+        #    Values written to hr.attendance remain UTC-naive. The visible
+        #    local time is produced by Odoo timezone display, not by adding
+        #    device_timezone before writing.
         # 4) Never create an open hr.attendance. A system 00:00 Check In may
         #    remain in Attendance Logs, but it must not become an open
         #    hr.attendance that blocks later records.
@@ -950,8 +1165,16 @@ class EntryControlAttendanceLog(models.Model):
             check_out_logs = day_logs.filtered(lambda r: r.direction == "out")
             first_in_log = check_in_logs[0]
             last_out_log = check_out_logs[-1] if check_out_logs else Log.browse()
-            check_in = first_in_log.check_time
-            check_out = last_out_log.check_time if last_out_log else False
+            # Write UTC-naive values from Attendance Logs directly to hr.attendance.
+            # Do NOT add device_timezone here. Odoo will apply the user's timezone
+            # when displaying hr.attendance, so adding it here would double-shift time.
+            #
+            # Correct behavior:
+            #   Real log:    check_time 03:29 + device_timezone +07 -> UI 10:29
+            #   System log:  check_time 16:59 + device_timezone 0 -> UI 23:59
+            #   System log:  check_time 17:00 previous day + device_timezone 0 -> UI 00:00 next day
+            check_in = Log._hr_attendance_utc_from_log(first_in_log)
+            check_out = Log._hr_attendance_utc_from_log(last_out_log) if last_out_log else False
 
             group_tz = Log._device_timezone_for_logs(day_logs)
             day_start, day_end = Log._business_day_bounds_utc(day, group_tz)

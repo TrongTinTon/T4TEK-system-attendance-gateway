@@ -8,6 +8,10 @@ class EntryControlCreateAttendanceWizard(models.TransientModel):
     _name = "entry.control.create.attendance.wizard"
     _description = "Create Attendances from Entry Control Logs"
 
+    @api.model
+    def _default_business_today(self):
+        return self.env["entry.control.attendance.log"].sudo()._business_now_date()
+
     month = fields.Selection([
         ("1", "January"),
         ("2", "February"),
@@ -21,8 +25,8 @@ class EntryControlCreateAttendanceWizard(models.TransientModel):
         ("10", "October"),
         ("11", "November"),
         ("12", "December"),
-    ], string="Month", required=True, default=lambda self: str(fields.Date.context_today(self).month))
-    year = fields.Integer(string="Year", required=True, default=lambda self: fields.Date.context_today(self).year)
+    ], string="Month", required=True, default=lambda self: str(self._default_business_today().month))
+    year = fields.Integer(string="Year", required=True, default=lambda self: self._default_business_today().year)
 
     def action_create_attendances(self):
         self.ensure_one()

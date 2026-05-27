@@ -1,0 +1,28 @@
+<odoo>
+    <record id="view_entry_control_settings_form" model="ir.ui.view">
+        <field name="name">entry.control.settings.form</field>
+        <field name="model">entry.control.settings</field>
+        <field name="arch" type="xml">
+            <form string="Entry Control Settings">
+                <sheet>
+                    <group string="Timezone">
+                        <field name="attendance_timezone" placeholder="Asia/Ho_Chi_Minh"/>
+                        <div class="text-muted" colspan="2">This timezone is used by Entry Control for Attendance Logs, system-generated 23:59/00:00 boundary logs, Create Attendances, and Cron. It does not depend on the current Odoo user's timezone.</div>
+                    </group>
+                </sheet>
+                <footer>
+                    <button name="action_save" type="object" string="Save" class="btn-primary"/>
+                    <button name="action_reset_default" type="object" string="Reset Default" class="btn-secondary"/>
+                    <button string="Cancel" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_entry_control_settings" model="ir.actions.act_window">
+        <field name="name">Settings</field>
+        <field name="res_model">entry.control.settings</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+</odoo>
