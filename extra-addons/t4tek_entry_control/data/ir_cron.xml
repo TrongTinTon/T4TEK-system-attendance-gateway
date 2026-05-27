@@ -2,9 +2,14 @@
 <odoo>
     <!--
         Scheduled Action: creates daily hr.attendance records from Entry Control
-        raw logs. Demo interval is every 1 minute; the trigger below makes it visible and
-        due immediately after module update/install so demo environments do not
-        need to wait for the next daily interval.
+        Attendance Logs.
+
+        IMPORTANT:
+        - Cron is intentionally installed/updated as inactive.
+        - This prevents automatic attendance creation immediately after module
+          installation or upgrade.
+        - Admin can enable or run it manually later from:
+          Settings -> Technical -> Automation -> Scheduled Actions.
     -->
     <record id="ir_cron_entry_control_create_daily_attendances" model="ir.cron">
         <field name="name">Entry Control: Create Daily Attendances</field>
@@ -15,12 +20,6 @@
         <field name="interval_number">1</field>
         <field name="interval_type">minutes</field>
         <field name="nextcall" eval="time.strftime('%Y-%m-%d %H:%M:%S')"/>
-        <field name="active">True</field>
-    </record>
-
-    <!-- Scheduled Actions Triggers: queue one immediate run after install/update. -->
-    <record id="ir_cron_trigger_entry_control_create_daily_attendances_now" model="ir.cron.trigger">
-        <field name="cron_id" ref="ir_cron_entry_control_create_daily_attendances"/>
-        <field name="call_at" eval="time.strftime('%Y-%m-%d %H:%M:%S')"/>
+        <field name="active">False</field>
     </record>
 </odoo>
