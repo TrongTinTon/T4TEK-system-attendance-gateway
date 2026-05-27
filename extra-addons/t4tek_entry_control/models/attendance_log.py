@@ -879,16 +879,22 @@ class EntryControlAttendanceLog(models.Model):
 
     @api.model
     def _ensure_continuous_logs_for_days(self, logs):
-        """Create missing system boundary logs without rebuilding/deleting data.
+        """Create missing 23:59/00:00 system logs with a simple workflow.
 
-        Simple workflow:
-        - Do not delete existing Attendance Logs.
-        - Do not delete/recreate old system logs on every run.
-        - Only create a missing 23:59 Check Out for a completed business day
-          whose last log is Check In.
-        - Only create the carry-over 00:00 Check In for the next day when that
-          next day has no real device log yet.
-        - Never create 23:59/00:00 for the current or future business day.
+        Rules used by both the Create Attendances button and the cron:
+        - Attendance Logs are continuous by employee. Direction is resequenced
+          Check In -> Check Out -> Check In -> Check Out.
+        - Never delete Attendance Logs and never rebuild old system rows.
+        - For each completed module-local day, if the last log of that day is
+          Check In, create two missing boundary logs if they do not exist yet:
+              1) Check Out at 23:59 of that day.
+              2) Check In at 00:00 of the next day.
+        - Always create the 00:00 carry-over Check In together with 23:59.
+          This keeps the next day continuous, so the next real log can become
+          the matching Check Out when appropriate.
+        - Create these boundary logs for the processing window immediately.
+          This intentionally allows the manual button/cron to close a selected
+          day when its last log is still Check In.
         """
         Log = self.sudo()
         logs = Log.browse(logs.ids).filtered(lambda r: r.employee_id and r.check_time)
@@ -903,22 +909,15 @@ class EntryControlAttendanceLog(models.Model):
 
         min_local_day = min(selected_days) - timedelta(days=1)
         max_local_day = max(selected_days)
-        today = Log._business_now_date()
         search_from, search_to = Log._broad_utc_search_bounds_for_local_days(min_local_day, max_local_day + timedelta(days=1))
 
         affected = Log.browse()
         for employee in employees:
-            # Keep direction continuous, but do not remove any database rows.
+            # Keep direction continuous first, but do not remove any row.
             affected |= Log._resequence_employee_logs(employee, search_from, search_to)
 
             day = min_local_day
             while day <= max_local_day:
-                # No future system logs. Today's 23:59/next 00:00 must wait
-                # until the day is completed.
-                if day >= today:
-                    day += timedelta(days=1)
-                    continue
-
                 emp_logs = Log.search([
                     ("employee_id", "=", employee.id),
                     ("check_time", ">=", search_from),
@@ -926,6 +925,11 @@ class EntryControlAttendanceLog(models.Model):
                 ], order="check_time asc, id asc")
                 day_logs = emp_logs.filtered(lambda r, d=day: Log._business_day_from_log(r) == d).sorted(key=lambda r: (r.check_time, r.id))
 
+                # Simple rule: for any day in the Create Attendances/Cron
+                # processing window, if the final log is still Check In, close
+                # that day at 23:59 and carry the employee into the next day at
+                # 00:00. Do not delete/rebuild old system logs; find-or-create
+                # prevents duplicates.
                 if day_logs and day_logs[-1].direction == "in":
                     last_log = day_logs[-1]
                     checkout_local = datetime.combine(day, time(23, 59, 0))
@@ -937,24 +941,16 @@ class EntryControlAttendanceLog(models.Model):
                         checkout_local,
                         _("missing Check Out at the end of the day"),
                     )
-
-                    # After creating 23:59, resequence only; do not delete.
-                    affected |= Log._resequence_employee_logs(employee, search_from, search_to)
-                    emp_logs = Log.search([
-                        ("employee_id", "=", employee.id),
-                        ("check_time", ">=", search_from),
-                        ("check_time", "<=", search_to),
-                    ], order="check_time asc, id asc")
-                    next_day_real_logs = emp_logs.filtered(
-                        lambda r, nd=day + timedelta(days=1): r.verify_method != "system_generated" and Log._business_day_from_log(r) == nd
+                    affected |= Log._find_or_create_system_log(
+                        last_log,
+                        "in",
+                        next_checkin_local,
+                        _("carry-over Check In for the next day after a system-generated 23:59 Check Out"),
                     )
-                    if not next_day_real_logs:
-                        affected |= Log._find_or_create_system_log(
-                            last_log,
-                            "in",
-                            next_checkin_local,
-                            _("carry-over Check In for the next day after a system-generated 23:59 Check Out"),
-                        )
+
+                    # Resequence immediately so the next real log after 00:00 is
+                    # interpreted continuously.
+                    affected |= Log._resequence_employee_logs(employee, search_from, search_to)
 
                 day += timedelta(days=1)
 
