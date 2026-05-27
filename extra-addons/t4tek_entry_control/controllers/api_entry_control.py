@@ -1,5 +1,6 @@
 import json
-from datetime import datetime, timezone
+import re
+from datetime import datetime
 
 from odoo import fields, http, SUPERUSER_ID
 from odoo.http import Response, request
@@ -64,30 +65,106 @@ class EntryControlAPI(http.Controller):
 
 
     def _safe_datetime_value(self, value):
-        """Accept Odoo datetime strings and Controller ISO datetime strings.
+        """Normalize any Controller datetime into Odoo UTC-naive storage.
 
-        Controller .NET may send values like 2026-05-25T10:04:03.1234567+07:00.
-        Odoo Datetime fields store naive UTC strings, so normalize here before ORM write.
+        New baseline: Odoo Datetime fields store UTC-naive values. If the
+        Controller sends ``2026-05-27 10:02:38+07``, the stored value is
+        ``2026-05-27 03:02:38``. Values without an offset are treated as
+        already-naive compatibility values.
         """
         if not value:
             return False
-        raw = str(value).strip()
+        raw = str(value).strip().replace("T", " ")
         if not raw:
             return False
         try:
-            parsed = fields.Datetime.to_datetime(raw)
-            if parsed:
-                return fields.Datetime.to_string(parsed)
-        except Exception:
-            pass
-        try:
-            iso = raw.replace("Z", "+00:00")
-            parsed = datetime.fromisoformat(iso)
-            if parsed.tzinfo:
+            parsed = fields.Datetime.to_datetime(raw) or datetime.fromisoformat(raw)
+            if parsed and parsed.tzinfo:
+                from datetime import timezone
                 parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
-            return fields.Datetime.to_string(parsed)
+            elif parsed:
+                parsed = parsed.replace(tzinfo=None)
+            return fields.Datetime.to_string(parsed) if parsed else False
         except Exception:
             return False
+
+    def _extract_timezone_note_from_controller_value(self, value):
+        """Extract the timezone suffix used for UTC conversion.
+
+        Attendance push keeps the device wall-clock part separately from the
+        offset. The model later combines them so ``10:02:38`` with ``+07:00``
+        is stored as ``03:02:38`` UTC-naive in ``check_time``.
+        """
+        raw = str(value or "").strip()
+        if not raw:
+            return False
+        if raw.endswith(("Z", "z")):
+            return "+00:00"
+        match = re.search(r"([+-]\d{2})(?::?(\d{2}))?$", raw)
+        if match:
+            return "%s:%s" % (match.group(1), match.group(2) or "00")
+        return False
+
+    def _strip_timezone_note_from_controller_value(self, value):
+        raw = str(value or "").strip()
+        if not raw:
+            return raw
+        if raw.endswith(("Z", "z")):
+            return raw[:-1].strip()
+        return re.sub(r"([+-]\d{2})(?::?\d{2})?$", "", raw).strip()
+
+    def _canonical_controller_check_time(self, value):
+        """Return the device-local wall-clock part of Controller check_time.
+
+        Example: ``2026-05-27 10:02:38+07`` becomes
+        ``2026-05-27 10:02:38`` here. The model then converts this local value
+        with ``device_timezone`` to Odoo UTC-naive storage.
+        """
+        if not value:
+            return False
+        text = self._strip_timezone_note_from_controller_value(value).replace("T", " ").strip()
+        match = re.search(r"(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2}:\d{2})(?:\.(\d{1,6}))?", text)
+        if match:
+            frac = match.group(3)
+            return f"{match.group(1)} {match.group(2)}" + (("." + frac[:6].ljust(6, "0")) if frac else "")
+        # Last-resort parser: parse only after timezone suffix has been removed.
+        try:
+            parsed = fields.Datetime.to_datetime(text) or datetime.fromisoformat(text)
+            return fields.Datetime.to_string(parsed.replace(tzinfo=None))
+        except Exception:
+            return False
+
+    def _prepare_attendance_log_timezone_before_save(self, log):
+        """Prepare attendance payload for UTC-canonical model storage.
+
+        API input may contain ``check_time`` / ``checkTime`` / ``timestamp``.
+        We keep the device-local wall-clock value in ``check_time`` and keep the
+        offset in ``device_timezone``. The model is the single place that writes
+        UTC-naive ``check_time`` to Odoo.
+        """
+        item = dict(log or {})
+        time_keys = (
+            "check_time", "checkTime", "device_check_time", "deviceCheckTime",
+            "local_check_time", "localCheckTime", "time", "timestamp",
+        )
+        raw_key = next((k for k in time_keys if item.get(k)), None)
+        raw_value = item.get(raw_key) if raw_key else False
+        tz_note = self._extract_timezone_note_from_controller_value(raw_value)
+        canonical = self._canonical_controller_check_time(raw_value)
+        if canonical:
+            # Keep exact Controller wall-clock time; model converts it to UTC
+            # using device_timezone before saving.
+            item["check_time"] = canonical
+        if tz_note and not (item.get("device_timezone") or item.get("deviceTimezone") or item.get("timezone") or item.get("tz")):
+            item["device_timezone"] = tz_note
+        item["_pre_save_timezone_debug"] = {
+            "source_key": raw_key,
+            "received_check_time": raw_value,
+            "canonical_check_time": canonical,
+            "device_timezone": item.get("device_timezone") or item.get("deviceTimezone") or item.get("timezone") or item.get("tz") or tz_note,
+            "timezone_used_for_utc_storage": bool(tz_note),
+        }
+        return item
 
     def _employee_code_fields(self):
         """Return the employee-code fields available on hr.employee.
@@ -459,15 +536,33 @@ class EntryControlAPI(http.Controller):
         failed = []
         for idx, log in enumerate(logs if isinstance(logs, list) else []):
             try:
-                rec, duplicate = Log.ingest_direct_log(controller, log)
+                prepared_log = self._prepare_attendance_log_timezone_before_save(log)
+                tz_debug = prepared_log.pop("_pre_save_timezone_debug", {})
+                rec, duplicate = Log.ingest_direct_log(controller, prepared_log)
+                expected_local = tz_debug.get("canonical_check_time") or ""
+                expected_display = ""
+                if expected_local:
+                    try:
+                        expected_dt = fields.Datetime.to_datetime(expected_local)
+                        expected_display = expected_dt.strftime("%m/%d/%Y %H:%M:%S") if expected_dt else ""
+                    except Exception:
+                        expected_display = ""
+                device_local_display = rec.check_time_display or ""
                 results.append({
                     "index": idx,
-                    "local_id": log.get("local_id") or log.get("id"),
+                    "local_id": prepared_log.get("local_id") or prepared_log.get("id"),
                     "attendance_log_id": rec.id,
                     "success": rec.sync_status != "failed",
                     "status": "success" if rec.sync_status != "failed" else "failed",
                     "message": rec.error_message or "",
                     "direction": rec.direction,
+                    "check_time_db_utc": rec.check_time_stored_display or fields.Datetime.to_string(rec.check_time),
+                    "check_time_stored": rec.check_time_stored_display or fields.Datetime.to_string(rec.check_time),
+                    "check_time_device_local": device_local_display,
+                    "check_time_display": device_local_display,
+                    "device_timezone": rec.device_timezone,
+                    "pre_save_timezone_check": tz_debug,
+                    "timezone_validation_ok": bool(not expected_display or device_local_display == expected_display),
                     "duplicate": duplicate,
                 })
                 if rec.sync_status == "failed":

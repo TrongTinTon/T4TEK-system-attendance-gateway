@@ -30,8 +30,9 @@ class EntryControlCreateAttendanceWizard(models.TransientModel):
         year = int(self.year)
         last_day = monthrange(year, month)[1]
         Log = self.env["entry.control.attendance.log"].sudo()
-        date_from, _date_from_end = Log._business_day_bounds_utc(date(year, month, 1))
-        _date_to_start, date_to = Log._business_day_bounds_utc(date(year, month, last_day))
+        # Search a broad UTC window. The actual month filter is applied inside
+        # action_sync_hr_attendance by Device Local Day, not by raw UTC check_time.
+        date_from, date_to = Log._broad_utc_search_bounds_for_local_days(date(year, month, 1), date(year, month, last_day))
 
         logs = Log.search([
             ("check_time", ">=", date_from),

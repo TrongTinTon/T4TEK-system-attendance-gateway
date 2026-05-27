@@ -78,7 +78,9 @@
                                 <list>
                                     <field name="employee_id"/>
                                     <field name="direction" widget="badge"/>
-                                    <field name="check_time"/>
+                                    <field name="check_time_stored_display" string="Check Time DB UTC"/>
+                                    <field name="check_time_display" string="Check Time Device Local"/>
+                                    <field name="check_time" string="Check Time (Odoo Datetime)" optional="hide"/>
                                     <field name="serial_number" string="Device"/>
                                     <field name="verify_method"/>
                                     <field name="sync_status" widget="badge"/>
