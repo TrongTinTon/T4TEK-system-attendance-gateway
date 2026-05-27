@@ -1,4 +1,6 @@
 from datetime import date
+from calendar import monthrange
+
 from odoo import api, fields, models, _
 
 
@@ -26,24 +28,23 @@ class EntryControlCreateAttendanceWizard(models.TransientModel):
         self.ensure_one()
         month = int(self.month)
         year = int(self.year)
+        last_day = monthrange(year, month)[1]
         Log = self.env["entry.control.attendance.log"].sudo()
-        month_start = date(year, month, 1)
-        if month == 12:
-            next_month_start = date(year + 1, 1, 1)
-        else:
-            next_month_start = date(year, month + 1, 1)
-        date_from = Log._local_day_bounds_utc(month_start)[0]
-        date_to = Log._local_day_bounds_utc(next_month_start)[0]
+        date_from, _date_from_end = Log._business_day_bounds_utc(date(year, month, 1))
+        _date_to_start, date_to = Log._business_day_bounds_utc(date(year, month, last_day))
 
         logs = Log.search([
             ("check_time", ">=", date_from),
-            ("check_time", "<", date_to),
+            ("check_time", "<=", date_to),
         ], order="check_time asc, id asc")
 
-        # Do not recompute or overwrite raw log directions here.
-        # The server already decided each log direction when it was ingested;
-        # Create Attendances must only consume existing Check In / Check Out logs.
-        logs.action_sync_hr_attendance()
+        # Attendance Logs are the source of truth. This action first makes
+        # Attendance Logs continuous by inserting system boundary logs when
+        # needed, then derives hr.attendance from those logs.
+        logs.with_context(
+            entry_control_target_day_from=str(date(year, month, 1)),
+            entry_control_target_day_to=str(date(year, month, last_day)),
+        ).action_sync_hr_attendance()
 
         return {
             "type": "ir.actions.client",

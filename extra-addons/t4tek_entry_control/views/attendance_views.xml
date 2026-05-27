@@ -41,11 +41,11 @@
                 </header>
                 <field name="employee_id"/>
                 <field name="direction" widget="badge" decoration-success="direction == 'in'" decoration-info="direction == 'out'"/>
-                <field name="check_time"/>
+                <field name="check_time" string="Check Time"/>
                 <field name="serial_number" string="Device"/>
                 <field name="verify_method"/>
+                <field name="message" optional="show"/>
                 <field name="sync_status" widget="badge" decoration-success="sync_status == 'success'" decoration-danger="sync_status == 'failed'" decoration-muted="sync_status == 'skipped'"/>
-                <field name="error_message"/>
             </list>
         </field>
     </record>
@@ -64,16 +64,15 @@
                         </group>
                         <group string="Attendance">
                             <field name="direction"/>
-                            <field name="check_time"/>
-                            <field name="device_check_time"/>
-                                        <field name="verify_method"/>
+                            <field name="check_time" string="Check Time" readonly="1"/>
+                            <field name="verify_method"/>
                             <field name="verify_type"/>
-                                    </group>
+                        </group>
                     </group>
                     <group string="Odoo Attendances">
                         <field name="hr_attendance_id"/>
                         <field name="sync_status"/>
-                        <field name="error_message"/>
+                        <field name="message"/>
                     </group>
                 </sheet>
             </form>
@@ -91,6 +90,7 @@
                 <filter name="filter_check_in" string="Check In" domain="[('direction','=','in')]"/>
                 <filter name="filter_check_out" string="Check Out" domain="[('direction','=','out')]"/>
                 <filter name="filter_sync_failed" string="Failed" domain="[('sync_status','=','failed')]"/>
+                <filter name="filter_system_generated" string="System Generated" domain="[('verify_method','=','system_generated')]"/>
             </search>
         </field>
     </record>

@@ -39,10 +39,17 @@ class EntryControlDevice(models.Model):
     @api.model
     def _serial_from_payload(self, payload):
         payload = dict(payload or {})
-        # API contract is intentionally strict: device identity must be sent as
-        # ``serial_number`` only. Do not accept IP/device_code/sn/camelCase
-        # aliases because they can create duplicate or ambiguous devices.
-        return str(payload.get("serial_number") or "").strip()
+        # Canonical identity is serial_number. Fallback names are accepted only
+        # to tolerate older Controller builds; the value is still stored in the
+        # canonical serial_number field. IP is never used as identity.
+        return str(
+            payload.get("serial_number")
+            or payload.get("serialNumber")
+            or payload.get("device_serial_number")
+            or payload.get("deviceSerialNumber")
+            or payload.get("sn")
+            or ""
+        ).strip()
 
     @api.model
     def upsert_from_payload(self, controller, payload):
