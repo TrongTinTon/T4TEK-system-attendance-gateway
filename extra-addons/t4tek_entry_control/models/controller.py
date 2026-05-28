@@ -14,7 +14,7 @@ class EntryControlController(models.Model):
     # Backward-compatible alias for existing controller source/UI names.
     controller_code = fields.Char(string="Controller Code", compute="_compute_controller_code", inverse="_inverse_controller_code", store=True, index=True)
     name = fields.Char(required=True, default="New Controller")
-    secret_key = fields.Char(string="Secret Key", required=True, copy=False)
+    secret_key = fields.Char(string="Secret Key", required=True, copy=False, groups="t4tek_entry_control.group_entry_control_admin,base.group_system")
 
     last_sync_at = fields.Datetime(string="Last Sync At", readonly=True)
     last_heartbeat_at = fields.Datetime(string="Last Heartbeat At", readonly=True)
@@ -26,11 +26,11 @@ class EntryControlController(models.Model):
     active = fields.Boolean(default=True, index=True)
     note = fields.Text()
 
-    token_hash = fields.Char(copy=False, readonly=True)
-    token_hint = fields.Char(copy=False, readonly=True)
-    token_expires_at = fields.Datetime(copy=False, readonly=True)
-    refresh_token_hash = fields.Char(copy=False, readonly=True)
-    refresh_token_expires_at = fields.Datetime(copy=False, readonly=True)
+    token_hash = fields.Char(copy=False, readonly=True, groups="t4tek_entry_control.group_entry_control_admin,base.group_system")
+    token_hint = fields.Char(copy=False, readonly=True, groups="t4tek_entry_control.group_entry_control_admin,base.group_system")
+    token_expires_at = fields.Datetime(copy=False, readonly=True, groups="t4tek_entry_control.group_entry_control_admin,base.group_system")
+    refresh_token_hash = fields.Char(copy=False, readonly=True, groups="t4tek_entry_control.group_entry_control_admin,base.group_system")
+    refresh_token_expires_at = fields.Datetime(copy=False, readonly=True, groups="t4tek_entry_control.group_entry_control_admin,base.group_system")
     last_auth_at = fields.Datetime(readonly=True)
     last_error = fields.Text(readonly=True)
 
@@ -134,7 +134,12 @@ class EntryControlController(models.Model):
         })
         return access_token, refresh_token
 
+    def _check_gatekeeper_admin(self):
+        if not (self.env.user.has_group("t4tek_entry_control.group_entry_control_admin") or self.env.user.has_group("base.group_system")):
+            raise UserError(_("Only Gatekeeper Administrators can perform this action."))
+
     def action_generate_secret_key(self):
+        self._check_gatekeeper_admin()
         for rec in self:
             rec.write({
                 "secret_key": rec._new_secret_key(),
@@ -151,8 +156,7 @@ class EntryControlController(models.Model):
 
     def action_copy_secret_key(self):
         self.ensure_one()
-        if not self.env.user.has_group("base.group_system"):
-            raise UserError(_("Only Settings administrators can copy the secret key."))
+        self._check_gatekeeper_admin()
         if not self.secret_key:
             raise UserError(_("This controller does not have a secret key."))
         return {
@@ -166,9 +170,11 @@ class EntryControlController(models.Model):
         }
 
     def action_block(self):
+        self._check_gatekeeper_admin()
         self.write({"status": "blocked", "active": False, "token_hash": False, "refresh_token_hash": False, "last_error": _("Blocked by administrator.")})
         return True
 
     def action_unblock(self):
+        self._check_gatekeeper_admin()
         self.write({"status": "offline", "active": True, "last_error": False})
         return True

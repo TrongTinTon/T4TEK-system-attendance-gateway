@@ -12,7 +12,7 @@
                     <button name="action_create_attendances"
                             type="object"
                             string="Create Attendances"
-                            class="btn-primary"/>
+                            class="btn-primary" groups="t4tek_entry_control.group_entry_control_manager,base.group_system"/>
                     <button string="Cancel" class="btn-secondary" special="cancel"/>
                 </footer>
             </form>
@@ -37,7 +37,7 @@
                             type="action"
                             string="Create Attendances"
                             class="btn-primary"
-                            display="always"/>
+                            display="always" groups="t4tek_entry_control.group_entry_control_manager,base.group_system"/>
                 </header>
                 <field name="employee_id"/>
                 <field name="direction" widget="badge" decoration-success="direction == 'in'" decoration-info="direction == 'out'"/>

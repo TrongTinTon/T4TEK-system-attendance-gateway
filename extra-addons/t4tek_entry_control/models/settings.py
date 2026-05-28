@@ -40,8 +40,13 @@ class EntryControlSettings(models.TransientModel):
             raise UserError(_("Invalid timezone '%s'. Please use an IANA timezone name, for example Asia/Ho_Chi_Minh.") % tz_name)
         return tz_name
 
+    def _check_gatekeeper_admin(self):
+        if not (self.env.user.has_group("t4tek_entry_control.group_entry_control_admin") or self.env.user.has_group("base.group_system")):
+            raise UserError(_("Only Gatekeeper Administrators can change Gatekeeper Settings."))
+
     def action_save(self):
         self.ensure_one()
+        self._check_gatekeeper_admin()
         tz_name = self._validate_timezone(self.attendance_timezone)
         Log = self._log_model()
         self.env["ir.config_parameter"].sudo().set_param(Log._CONFIG_ATTENDANCE_TIMEZONE, tz_name)
@@ -59,6 +64,7 @@ class EntryControlSettings(models.TransientModel):
 
     def action_reset_default(self):
         self.ensure_one()
+        self._check_gatekeeper_admin()
         Log = self._log_model()
         tz_name = Log._DEFAULT_ATTENDANCE_TIMEZONE
         self.env["ir.config_parameter"].sudo().set_param(Log._CONFIG_ATTENDANCE_TIMEZONE, tz_name)

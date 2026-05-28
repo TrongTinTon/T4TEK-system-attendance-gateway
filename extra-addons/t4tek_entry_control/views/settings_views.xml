@@ -11,8 +11,8 @@
                     </group>
                 </sheet>
                 <footer>
-                    <button name="action_save" type="object" string="Save" class="btn-primary"/>
-                    <button name="action_reset_default" type="object" string="Reset Default" class="btn-secondary"/>
+                    <button name="action_save" type="object" string="Save" class="btn-primary" groups="t4tek_entry_control.group_entry_control_admin,base.group_system"/>
+                    <button name="action_reset_default" type="object" string="Reset Default" class="btn-secondary" groups="t4tek_entry_control.group_entry_control_admin,base.group_system"/>
                     <button string="Cancel" class="btn-secondary" special="cancel"/>
                 </footer>
             </form>

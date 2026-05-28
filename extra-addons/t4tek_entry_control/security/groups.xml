@@ -1,7 +1,23 @@
 <odoo>
+    <!-- Gatekeeper permissions are intentionally separated from Odoo Settings/System Administrator. -->
+    <record id="group_entry_control_user" model="res.groups">
+        <field name="name">Gatekeeper User</field>
+        <field name="category_id" ref="base.module_category_human_resources"/>
+        <field name="comment">Read-only access to Gatekeeper operational screens such as Devices, Employee Sync Status, and Attendance Logs.</field>
+    </record>
+
+    <record id="group_entry_control_manager" model="res.groups">
+        <field name="name">Gatekeeper Manager</field>
+        <field name="category_id" ref="base.module_category_human_resources"/>
+        <field name="implied_ids" eval="[(5, 0, 0), (4, ref('t4tek_entry_control.group_entry_control_user'))]"/>
+        <field name="comment">Operational access for Gatekeeper: manage devices/logs and create Odoo Attendances from Attendance Logs. Does not grant Odoo Settings access.</field>
+    </record>
+
     <record id="group_entry_control_admin" model="res.groups">
         <field name="name">Gatekeeper Administrator</field>
         <field name="category_id" ref="base.module_category_human_resources"/>
-        <field name="implied_ids" eval="[(4, ref('base.group_system'))]"/>
+        <!-- Important: clear older implied groups, especially base.group_system from previous builds. -->
+        <field name="implied_ids" eval="[(5, 0, 0), (4, ref('t4tek_entry_control.group_entry_control_manager'))]"/>
+        <field name="comment">Full Gatekeeper administration, including Controllers, Secret Keys, and Settings. This group does not imply Odoo Settings/System Administrator.</field>
     </record>
 </odoo>

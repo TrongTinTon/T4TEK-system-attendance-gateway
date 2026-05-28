@@ -20,10 +20,10 @@
         <field name="arch" type="xml">
             <form string="Controller">
                 <header>
-                    <button name="action_generate_secret_key" type="object" string="Generate Key" class="btn-primary" groups="base.group_system"/>
-                    <button name="action_copy_secret_key" type="object" string="Copy" class="btn-secondary" groups="base.group_system" invisible="not secret_key"/>
-                    <button name="action_block" type="object" string="Block" invisible="status == 'blocked'" class="btn-secondary"/>
-                    <button name="action_unblock" type="object" string="Unblock" invisible="status != 'blocked'" class="btn-primary"/>
+                    <button name="action_generate_secret_key" type="object" string="Generate Key" class="btn-primary" groups="t4tek_entry_control.group_entry_control_admin,base.group_system"/>
+                    <button name="action_copy_secret_key" type="object" string="Copy" class="btn-secondary" groups="t4tek_entry_control.group_entry_control_admin,base.group_system" invisible="not secret_key"/>
+                    <button name="action_block" type="object" string="Block" invisible="status == 'blocked'" class="btn-secondary" groups="t4tek_entry_control.group_entry_control_admin,base.group_system"/>
+                    <button name="action_unblock" type="object" string="Unblock" invisible="status != 'blocked'" class="btn-primary" groups="t4tek_entry_control.group_entry_control_admin,base.group_system"/>
                     <field name="status" widget="statusbar" statusbar_visible="offline,online,blocked"/>
                 </header>
                 <sheet>
@@ -34,7 +34,7 @@
                         <group string="Identity">
                             <field name="name" string="Controller Name"/>
                             <field name="controller_uid"/>
-                            <field name="secret_key" widget="CopyClipboardChar" groups="base.group_system"/>
+                            <field name="secret_key" widget="CopyClipboardChar" groups="t4tek_entry_control.group_entry_control_admin,base.group_system"/>
                             <field name="active"/>
                         </group>
                         <group string="Runtime Status">

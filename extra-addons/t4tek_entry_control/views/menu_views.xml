@@ -1,8 +1,8 @@
 <odoo>
-    <menuitem id="menu_entry_control_root" name="Gatekeeper" sequence="35" groups="base.group_system"/>
-    <menuitem id="menu_entry_control_controller" name="Controllers" parent="menu_entry_control_root" action="action_entry_control_controller" sequence="10" groups="base.group_system"/>
-    <menuitem id="menu_entry_control_device" name="Devices" parent="menu_entry_control_root" action="action_entry_control_device" sequence="20" groups="base.group_system"/>
-    <menuitem id="menu_entry_control_employee_sync" name="Employee Sync Status" parent="menu_entry_control_root" action="action_entry_control_employee_sync" sequence="30" groups="base.group_system"/>
-    <menuitem id="menu_entry_control_attendance" name="Attendance Logs" parent="menu_entry_control_root" action="action_entry_control_attendance_log" sequence="40" groups="base.group_system"/>
-    <menuitem id="menu_entry_control_settings" name="Settings" parent="menu_entry_control_root" action="action_entry_control_settings" sequence="90" groups="base.group_system"/>
+    <menuitem id="menu_entry_control_root" name="Gatekeeper" sequence="35" groups="t4tek_entry_control.group_entry_control_user,base.group_system"/>
+    <menuitem id="menu_entry_control_controller" name="Controllers" parent="menu_entry_control_root" action="action_entry_control_controller" sequence="10" groups="t4tek_entry_control.group_entry_control_admin,base.group_system"/>
+    <menuitem id="menu_entry_control_device" name="Devices" parent="menu_entry_control_root" action="action_entry_control_device" sequence="20" groups="t4tek_entry_control.group_entry_control_user,base.group_system"/>
+    <menuitem id="menu_entry_control_employee_sync" name="Employee Sync Status" parent="menu_entry_control_root" action="action_entry_control_employee_sync" sequence="30" groups="t4tek_entry_control.group_entry_control_user,base.group_system"/>
+    <menuitem id="menu_entry_control_attendance" name="Attendance Logs" parent="menu_entry_control_root" action="action_entry_control_attendance_log" sequence="40" groups="t4tek_entry_control.group_entry_control_user,base.group_system"/>
+    <menuitem id="menu_entry_control_settings" name="Settings" parent="menu_entry_control_root" action="action_entry_control_settings" sequence="90" groups="t4tek_entry_control.group_entry_control_admin,base.group_system"/>
 </odoo>

@@ -2,6 +2,7 @@ from datetime import date
 from calendar import monthrange
 
 from odoo import api, fields, models, _
+from odoo.exceptions import UserError
 
 
 class EntryControlCreateAttendanceWizard(models.TransientModel):
@@ -30,6 +31,8 @@ class EntryControlCreateAttendanceWizard(models.TransientModel):
 
     def action_create_attendances(self):
         self.ensure_one()
+        if not (self.env.user.has_group("t4tek_entry_control.group_entry_control_manager") or self.env.user.has_group("base.group_system")):
+            raise UserError(_("Only Gatekeeper Managers can create Odoo Attendances from Gatekeeper Logs."))
         month = int(self.month)
         year = int(self.year)
         last_day = monthrange(year, month)[1]
