@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+
+    <t t-name="sem_attendance.CalendarCommonRenderer">
+        <div class="o_attendance_calendar_widget d-flex flex-column h-100 bg-view overflow-hidden position-relative">
+            <t t-if="!employees.length">
+                <div class="text-center p-4">Đang tải dữ liệu nhân viên...</div>
+            </t>
+            <t t-else="">
+                <!-- Table container for grid -->
+                <div class="table-responsive bg-view h-100 w-100" style="overflow: auto;">
+                    <table class="table table-bordered mb-0" t-attf-style="table-layout: fixed; width: 100%; min-width: {{ 250 + (days.length * 90) }}px;">
+                        <thead class="sticky-top bg-view shadow-sm" style="z-index: 10;">
+                            <tr>
+                                <th class="sticky-start bg-view shadow-sm p-3 align-middle" style="width: 250px; min-width: 250px; max-width: 250px; z-index: 11; border-right: 2px solid #dee2e6;">
+                                    NHÂN VIÊN / NGÀY
+                                </th>
+                                <t t-foreach="days" t-as="day" t-key="day.toISODate()">
+                                    <th class="text-center p-2 align-middle border-end" style="width: auto; min-width: 90px;" t-att-class="day.weekday == 6 or day.weekday == 7 ? 'bg-light' : ''">
+                                        <div t-esc="getShortWeekday(day)" class="small" style="text-transform: uppercase; font-size: 11px; margin-bottom: 2px; color: #495057; font-weight: 500;"/>
+                                        <div>
+                                            <span t-attf-class="d-inline-flex justify-content-center align-items-center rounded-circle fw-normal {{ isToday(day) ? 'bg-danger text-white' : 'text-dark' }}"
+                                                  t-esc="day.toFormat('d')"
+                                                  style="width: 32px; height: 32px; font-size: 18px;"/>
+                                        </div>
+                                    </th>
+                                </t>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <t t-foreach="employees" t-as="employee" t-key="employee.id">
+                                <tr>
+                                    <td class="sticky-start bg-view shadow-sm p-2 align-middle" style="width: 250px; min-width: 250px; max-width: 250px; z-index: 5; border-right: 2px solid #dee2e6;">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <img t-attf-src="{{ getAvatarUrl(employee.id) }}"
+                                                 class="o_image_40_cover rounded" alt="Avatar"
+                                                 style="width: 40px; height: 40px; object-fit: cover;"
+                                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"/>
+                                            <div class="rounded bg-secondary d-flex align-items-center justify-content-center text-white fw-bold"
+                                                 style="width: 40px; height: 40px; display: none !important;">
+                                                <t t-esc="employee.name[0]"/>
+                                            </div>
+                                            <div class="d-flex flex-column" style="min-width: 0;">
+                                                <span class="fw-bold text-truncate" style="max-width: 200px;" t-esc="employee.name"/>
+                                                <small class="text-muted text-truncate" style="max-width: 200px;" t-esc="employee.job_title || ''"/>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <t t-foreach="days" t-as="day" t-key="day.toISODate()">
+                                        <t t-set="records_in_cell" t-value="getRecordsForCell(employee.id, day)"/>
+                                        <td class="p-1 align-top text-center position-relative border-end"
+                                            t-att-class="day.weekday == 6 or day.weekday == 7 ? 'bg-light' : ''"
+                                            style="min-width: 90px; cursor: pointer;"
+                                            t-on-click="() => this.onCellClick(employee.id, day)">
+
+                                            <div class="d-flex flex-column w-100" style="overflow: visible; border-radius: 4px; position: relative;">
+                                                <t t-foreach="records_in_cell" t-as="record" t-key="record.id">
+                                                    <t t-set="span" t-value="getRecordSpan(record)"/>
+                                                    <div class="d-flex align-items-center px-1 text-white small o_attendance_record_row"
+                                                         t-attf-style="background-color: {{getColor(record.colorIndex) || '#17a2b8'}}; min-height: 20px; border-radius: 3px; margin-bottom: 1px; {{ span > 1 ? 'position: absolute; left: 0; right: calc(-' + (span - 1) * 100 + '% - ' + (span - 1) + 'px); z-index: 5;' : 'position: relative;' }}"
+                                                         t-att-title="record.title"
+                                                         t-on-click.stop="() => this.onCellClick(employee.id, day)">
+                                                        <span class="text-truncate flex-grow-1" style="min-width: 0; user-select: none; font-size: 11px; line-height: 20px;">
+                                                            <t t-if="record.rawRecord.worked_hours">
+                                                                <t t-esc="formatHours(record.rawRecord.worked_hours)"/> h
+                                                                <t t-if="record.rawRecord.duration_attendance">
+                                                                    (<t t-esc="record.rawRecord.duration_attendance.toFixed(2)"/> công)
+                                                                </t>
+                                                            </t>
+                                                            <t t-else="">
+                                                                <t t-esc="record.title"/>
+                                                            </t>
+                                                        </span>
+                                                    </div>
+                                                    <!-- Placeholder giữ chiều cao cho cell khi record là absolute -->
+                                                    <t t-if="span > 1">
+                                                        <div style="min-height: 21px; visibility: hidden;"/>
+                                                    </t>
+                                                </t>
+                                            </div>
+
+                                            <!-- Popup list records (khi cell có >= 2 records và được click) -->
+                                            <t t-if="state.recordListPopup and state.recordListPopup.employeeId === employee.id and state.recordListPopup.dateIso === day.toISODate()">
+                                                <div class="position-absolute bg-white border rounded shadow-lg p-2 text-start"
+                                                     style="z-index: 100; top: 0; left: 0; min-width: 220px; max-width: 300px;"
+                                                     t-on-click.stop="">
+                                                    <div class="d-flex justify-content-between align-items-start mb-2 border-bottom pb-2">
+                                                        <div class="d-flex flex-column">
+                                                            <strong class="small mb-1">Chấm công ngày <t t-esc="formatDate(state.recordListPopup.dateIso)"/></strong>
+                                                            <div class="mt-1">
+                                                                <span class="badge bg-warning text-dark px-2 py-1 shadow-sm border border-warning" style="font-size: 12px; font-weight: 600;">
+                                                                    <i class="fa fa-clock-o me-1"/> Tổng: <t t-esc="formatHours(state.recordListPopup.totalHours)"/> h
+                                                                    <t t-if="state.recordListPopup.totalDays"> - <t t-esc="state.recordListPopup.totalDays.toFixed(2)"/> công</t>
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        <span class="text-muted" style="cursor: pointer; font-size: 16px; line-height: 1;"
+                                                              t-on-click.stop="closeRecordListPopup">&#x2715;</span>
+                                                    </div>
+                                                    <t t-foreach="state.recordListPopup.records" t-as="pr" t-key="pr.id">
+                                                        <div class="d-flex align-items-center gap-1 mb-1 p-1 rounded"
+                                                             style="background: #f8f9fa;">
+                                                            <span class="badge text-white text-truncate flex-grow-1"
+                                                                  style="cursor: pointer;"
+                                                                  t-attf-style="background-color: {{getColor(pr.colorIndex) || '#17a2b8'}};"
+                                                                  t-on-click.stop="() => this.openRecordEdit(pr)">
+                                                                <t t-if="pr.rawRecord.worked_hours">
+                                                                    <t t-esc="formatHours(pr.rawRecord.worked_hours)"/> h
+                                                                    <t t-if="pr.rawRecord.duration_attendance">
+                                                                        (<t t-esc="pr.rawRecord.duration_attendance.toFixed(2)"/> công)
+                                                                    </t>
+                                                                </t>
+                                                                <t t-else="">
+                                                                    <t t-esc="pr.title"/>
+                                                                </t>
+                                                            </span>
+                                                            <span class="text-muted small text-nowrap"
+                                                                  style="cursor: pointer;"
+                                                                  t-on-click.stop="() => this.openRecordEdit(pr)">
+                                                                <t t-if="pr.rawRecord.check_in">
+                                                                    <t t-esc="pr.start ? pr.start.toFormat('HH:mm') : ''"/>
+                                                                </t>
+                                                            </span>
+                                                            <button class="btn btn-sm btn-outline-danger p-0 px-1 ms-1 flex-shrink-0"
+                                                                    style="line-height: 1.2; font-size: 11px;"
+                                                                    title="Xóa chấm công"
+                                                                    t-on-click.stop="() => this.onDeleteRecord(pr)">
+                                                                <i class="fa fa-trash"/>
+                                                            </button>
+                                                        </div>
+                                                    </t>
+                                                    <button class="btn btn-primary btn-sm w-100 mt-1"
+                                                            t-on-click.stop="() => this.onAddRecordFromPopup(state.recordListPopup.employeeId, state.recordListPopup.dateIso)">
+                                                        + Thêm chấm công
+                                                    </button>
+                                                </div>
+                                            </t>
+                                        </td>
+                                    </t>
+                                </tr>
+                            </t>
+                        </tbody>
+                    </table>
+                </div>
+            </t>
+        </div>
+    </t>
+
+</templates>

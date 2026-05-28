@@ -1,5 +1,5 @@
 <odoo>
-    <menuitem id="menu_entry_control_root" name="Entry Control" sequence="35" groups="base.group_system"/>
+    <menuitem id="menu_entry_control_root" name="Gatekeeper" sequence="35" groups="base.group_system"/>
     <menuitem id="menu_entry_control_controller" name="Controllers" parent="menu_entry_control_root" action="action_entry_control_controller" sequence="10" groups="base.group_system"/>
     <menuitem id="menu_entry_control_device" name="Devices" parent="menu_entry_control_root" action="action_entry_control_device" sequence="20" groups="base.group_system"/>
     <menuitem id="menu_entry_control_employee_sync" name="Employee Sync Status" parent="menu_entry_control_root" action="action_entry_control_employee_sync" sequence="30" groups="base.group_system"/>

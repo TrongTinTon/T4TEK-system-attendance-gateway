@@ -3,7 +3,7 @@ from odoo import api, fields, models
 
 class EntryControlDevice(models.Model):
     _name = "entry.control.device"
-    _description = "Entry Control Device"
+    _description = "Gatekeeper Device"
     _rec_name = "serial_number"
     _order = "last_seen_at desc, id desc"
 

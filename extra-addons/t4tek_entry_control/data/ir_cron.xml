@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <!--
-        Scheduled Action: creates daily hr.attendance records from Entry Control
+        Scheduled Action: creates daily hr.attendance records from Gatekeeper
         Attendance Logs.
 
         IMPORTANT:
@@ -12,7 +12,7 @@
           Settings -> Technical -> Automation -> Scheduled Actions.
     -->
     <record id="ir_cron_entry_control_create_daily_attendances" model="ir.cron">
-        <field name="name">Entry Control: Create Daily Attendances</field>
+        <field name="name">Gatekeeper: Create Daily Attendances</field>
         <field name="model_id" ref="model_entry_control_attendance_log"/>
         <field name="state">code</field>
         <field name="code">model.cron_create_daily_attendances()</field>

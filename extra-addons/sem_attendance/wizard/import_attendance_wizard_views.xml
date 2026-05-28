@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_import_attendance_wizard_form" model="ir.ui.view">
+        <field name="name">import.attendance.wizard.form</field>
+        <field name="model">import.attendance.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Nhập Chấm Công (Excel)">
+                <field name="state" invisible="1"/>
+                
+                <sheet>
+                    <group invisible="state != 'upload'">
+                        <field name="file_data" filename="file_name" widget="binary"/>
+                        <field name="file_name" invisible="1"/>
+                    </group>
+                    
+                    <group invisible="state != 'preview'">
+                        <field name="overwrite_overlap"/>
+                    </group>
+                    
+                    <p class="text-muted" invisible="state != 'upload'">
+                        Lưu ý: File Excel phải có dòng tiêu đề (header) chứa đúng các cột: 
+                        <b>'Mã nhân viên', 'Đăng nhập', 'Đăng xuất'</b>.
+                    </p>
+
+                    <notebook invisible="state != 'preview'">
+                        <page string="Dữ liệu xem trước">
+                            <field name="line_ids">
+                                <list editable="bottom" decoration-danger="not is_valid" decoration-success="is_valid" limit="100">
+                                    <field name="row_number" readonly="1"/>
+                                    <field name="employee_code" readonly="1"/>
+                                    <field name="employee_id" readonly="1"/>
+                                    <field name="check_in"/>
+                                    <field name="check_out"/>
+                                    <field name="is_valid" widget="boolean_toggle" readonly="1"/>
+                                    <field name="error_message" readonly="1"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <footer>
+                    <button string="Đọc file" name="action_load_file" type="object" class="btn-primary" invisible="state != 'upload'" data-hotkey="q"/>
+                    
+                    <button string="Kiểm tra lại" name="action_validate" type="object" class="btn-secondary" invisible="state != 'preview'"/>
+                    
+                    <button string="Tiến hành Nhập" name="action_import" type="object" class="btn-primary" invisible="state != 'preview'" data-hotkey="q"/>
+                    
+                    <button string="Hủy bỏ" class="btn-secondary" special="cancel" data-hotkey="z"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_import_attendance_wizard" model="ir.actions.act_window">
+        <field name="name">Nhập Chấm Công</field>
+        <field name="res_model">import.attendance.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+    </record>
+</odoo>

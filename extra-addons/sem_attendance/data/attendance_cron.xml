@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Cron Job: Tự động fill check_out 17:30 cho attendance chỉ có check_in -->
+        <record id="ir_cron_auto_fill_checkout" model="ir.cron">
+            <field name="name">SEM Attendance: Tự động fill check_out 17:30</field>
+            <field name="model_id" search="[('model', '=', 'hr.attendance')]"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_auto_fill_checkout()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="active">True</field>
+            <!-- Chạy lúc 00:00 mỗi ngày (UTC+7 => 17:00 UTC ngày trước) -->
+            <field name="nextcall" eval="DateTime.now().strftime('%Y-%m-%d') + ' 17:00:00'"/>
+        </record>
+    </data>
+</odoo>

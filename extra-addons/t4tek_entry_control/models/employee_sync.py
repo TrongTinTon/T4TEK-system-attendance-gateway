@@ -3,7 +3,7 @@ from odoo import fields, models
 
 class EntryControlEmployeeSync(models.Model):
     _name = "entry.control.employee.sync"
-    _description = "Entry Control Employee Sync Status"
+    _description = "Gatekeeper Employee Sync Status"
     _order = "last_synced_at desc, id desc"
 
     controller_id = fields.Many2one("entry.control.controller", required=True, ondelete="cascade", index=True)

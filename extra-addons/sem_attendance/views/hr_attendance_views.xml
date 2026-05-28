@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="hr_attendance_form" model="ir.ui.view">
+        <field name="name">hr.attendance.form</field>
+        <field name="model">hr.attendance</field>
+        <field name="arch" type="xml">
+            <form string="Chấm công">
+                <!-- <header>
+                    <button name="action_update_applied_calendar" type="object" string="Cập nhật lịch áp dụng" 
+                            class="oe_highlight" groups="sem_attendance.group_attendance_calendar_updater"
+                            invisible="not applied_calendar_id"/>
+                </header> -->
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="employee_code" readonly="1"/>
+                            <field name="employee_id" readonly="1" groups="!sem_attendance.sem_attendance_user"/>
+                            <field name="employee_id" readonly="0" groups="sem_attendance.sem_attendance_user"/>
+                            <field name="department_id" readonly="1"/>
+                            <field name="check_in" readonly="1"/>
+                            <field name="check_out" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="worked_hours" widget="float_time" readonly="1"/>
+                            <field name="applied_calendar_id" readonly="1" force_save="1"/>
+                        </group>
+                    </group>
+                    <separator string="Ghi chú"/>
+                    <field name="check_in_note" placeholder="Nhập ghi chú vào..."/>
+                    <field name="check_out_note" placeholder="Nhập ghi chú ra..."/>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids" widget="mail_followers"/>
+                    <field name="activity_ids" widget="mail_activity"/>
+                    <field name="message_ids" widget="mail_thread"/>
+                </div>
+            </form>
+        </field>
+        </record>
+
+        <record id="hr_attendance_search" model="ir.ui.view">
+            <field name="name">hr.attendance.search</field>
+            <field name="model">hr.attendance</field>
+            <field name="arch" type="xml">
+                <search string="Tìm chấm công">
+                    <field name="employee_id"/>
+                    <field name="check_in"/>
+                    <separator/>
+                    <filter name="today" string="Hôm nay" domain="[('check_in', '&gt;=', context_today().strftime('%Y-%m-%d 00:00:00')), ('check_in', '&lt;=', context_today().strftime('%Y-%m-%d 23:59:59'))]"/>
+                    <separator/>
+                    <group>
+                        <filter name="group_employee" string="Nhân viên" context="{'group_by':'employee_id'}"/>
+                        <filter name="group_date" string="Ngày" context="{'group_by':'check_in'}"/>
+                    </group>
+                </search>
+            </field>
+        </record>
+
+        <record id="sem_attendance_action" model="ir.actions.act_window">
+            <field name="name">Chấm công</field>
+            <field name="res_model">hr.attendance</field>
+            <field name="view_mode">list,form</field>
+        </record>
+
+</odoo>

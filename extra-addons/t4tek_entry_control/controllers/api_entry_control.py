@@ -4,7 +4,8 @@ from datetime import datetime
 
 from odoo import fields, http, SUPERUSER_ID
 from odoo.http import Response, request
-
+import logging
+_logger = logging.getLogger(__name__)
 
 class EntryControlAPI(http.Controller):
     def _json_response(self, payload, status=200):
@@ -95,6 +96,7 @@ class EntryControlAPI(http.Controller):
         offset. The model later combines them so ``10:02:38`` with ``+07:00``
         is stored as ``03:02:38`` UTC-naive in ``check_time``.
         """
+     
         raw = str(value or "").strip()
         if not raw:
             return False
@@ -135,6 +137,7 @@ class EntryControlAPI(http.Controller):
             return False
 
     def _prepare_attendance_log_timezone_before_save(self, log):
+        _logger.info("Gia tri text =>>>>>> %s",log)
         """Prepare attendance payload for UTC-canonical model storage.
 
         API input may contain ``check_time`` / ``checkTime`` / ``timestamp``.
@@ -144,8 +147,7 @@ class EntryControlAPI(http.Controller):
         """
         item = dict(log or {})
         time_keys = (
-            "check_time", "checkTime", "device_check_time", "deviceCheckTime",
-            "local_check_time", "localCheckTime", "time", "timestamp",
+            "check_time"
         )
         raw_key = next((k for k in time_keys if item.get(k)), None)
         raw_value = item.get(raw_key) if raw_key else False
@@ -170,7 +172,7 @@ class EntryControlAPI(http.Controller):
         """Return the employee-code fields available on hr.employee.
 
         The SEM module already provides ``hr.employee.code`` as Mã nhân viên.
-        This Entry Control module does not create that field; it only uses
+        This Gatekeeper module does not create that field; it only uses
         it as the canonical identifier exchanged with the Controller and as the
         ZKTeco device user ID / EnrollNumber.
         """
@@ -543,37 +545,21 @@ class EntryControlAPI(http.Controller):
         failed = []
         for idx, log in enumerate(logs if isinstance(logs, list) else []):
             try:
-                prepared_log = self._prepare_attendance_log_timezone_before_save(log)
-                tz_debug = prepared_log.pop("_pre_save_timezone_debug", {})
-                rec, duplicate = Log.ingest_direct_log(controller, prepared_log)
-                expected_local = tz_debug.get("canonical_check_time") or ""
-                expected_display = ""
-                if expected_local:
-                    try:
-                        expected_dt = fields.Datetime.to_datetime(expected_local)
-                        expected_display = expected_dt.strftime("%m/%d/%Y %H:%M:%S") if expected_dt else ""
-                    except Exception:
-                        expected_display = ""
-                stored_display = fields.Datetime.to_string(rec.check_time) if rec.check_time else ""
+                rec, duplicate = Log.ingest_direct_log(controller, log)
+
                 local_dt = rec._utc_naive_to_local(rec.check_time, rec.device_timezone) if rec.check_time else False
                 device_local_display = local_dt.strftime("%m/%d/%Y %H:%M:%S") if local_dt else ""
                 results.append({
                     "index": idx,
-                    "local_id": prepared_log.get("local_id") or prepared_log.get("id"),
                     "attendance_log_id": rec.id,
                     "success": rec.sync_status != "failed",
                     "status": "success" if rec.sync_status != "failed" else "failed",
                     "message": rec.error_message or "",
                     "direction": rec.direction,
-                    "check_time": stored_display,
-                    "check_time_db_utc": stored_display,
-                    "check_time_stored": stored_display,
                     "check_time_device_local": device_local_display,
                     "check_time_display": device_local_display,
                     "device_timezone": rec.device_timezone,
                     "module_timezone": rec._attendance_timezone_name(),
-                    "pre_save_timezone_check": tz_debug,
-                    "timezone_validation_ok": bool(not expected_display or device_local_display == expected_display),
                     "duplicate": duplicate,
                 })
                 if rec.sync_status == "failed":

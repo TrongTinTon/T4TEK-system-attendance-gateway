@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<templates xml:space="preserve">
+    <t t-name="SEM.AttendanceDashboard">
+        <div class="o_attendance_dashboard">
+            <div class="o_dashboard_header">
+                <h1>Bảng Điều Khiển Chấm Công</h1>
+            </div>
+
+            <div t-if="state.loading" class="o_dashboard_loading">
+                <i class="fa fa-spinner fa-spin"></i> Đang tải dữ liệu...
+            </div>
+
+            <div t-else="" class="o_dashboard_content">
+                <div class="o_stats_container">
+                    <div class="o_stat_card o_stat_present">
+                        <div class="o_stat_value" t-text="state.stats.present"></div>
+                        <div class="o_stat_label">Có Mặt Hôm Nay</div>
+                    </div>
+                    <div class="o_stat_card o_stat_absent">
+                        <div class="o_stat_value" t-text="state.stats.absent"></div>
+                        <div class="o_stat_label">Vắng Mặt</div>
+                    </div>
+                    <div class="o_stat_card o_stat_late">
+                        <div class="o_stat_value" t-text="state.stats.late"></div>
+                        <div class="o_stat_label">Đi Trễ</div>
+                    </div>
+                    <div class="o_stat_card o_stat_leave">
+                        <div class="o_stat_value" t-text="state.stats.on_leave"></div>
+                        <div class="o_stat_label">Phép</div>
+                    </div>
+                </div>
+
+                <div class="o_attendance_list_section">
+                    <h2>Chấm Công Hôm Nay</h2>
+                    <button t-on-click="viewAttendanceList" class="btn btn-primary">
+                        <i class="fa fa-list"></i> Xem Chi Tiết
+                    </button>
+                </div>
+            </div>
+        </div>
+    </t>
+</templates>

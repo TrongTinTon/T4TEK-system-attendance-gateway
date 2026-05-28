@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Tree View -->
+    <record id="sem_hr_attendance_report_view_tree" model="ir.ui.view">
+        <field name="name">sem.hr.attendance.report.view.tree</field>
+        <field name="model">hr.attendance.report</field>
+        <field name="arch" type="xml">
+            <list string="Báo cáo chấm công tổng hợp theo tháng">
+                <field name="month"/>
+                <field name="year"/>
+                <field name="employee_id"/>
+                <field name="total_hours" widget="float_time" sum="Tổng giờ làm"/>
+                <field name="total_days" sum="Tổng số ngày làm"/>
+                <field name="total_duration" sum="Tổng công" string="Tổng số công"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Form View -->
+    <record id="sem_hr_attendance_report_view_form" model="ir.ui.view">
+        <field name="name">sem.hr.attendance.report.view.form</field>
+        <field name="model">hr.attendance.report</field>
+        <field name="arch" type="xml">
+            <form string="Chi tiết báo cáo" create="false" edit="false" delete="false">
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            Tháng <field name="month" class="oe_inline"/> / <field name="year" class="oe_inline"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="employee_id"/>
+                        </group>
+                        <group>
+                            <field name="total_hours" widget="float_time"/>
+                            <field name="total_days"/>
+                            <field name="total_duration" string="Tổng số công"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Lịch sử chấm công">
+                            <field name="attendance_ids" nolabel="1">
+                                <list decoration-danger="attendance_type in ('absent', 'late_and_early')" decoration-warning="attendance_type == 'early_leave'" decoration-info="attendance_type == 'late'" decoration-primary="attendance_type == 'halfday'" decoration-success="attendance_type == 'normal'">
+                                    <field name="check_in"/>
+                                    <field name="check_out"/>
+                                    <field name="total_hours" widget="float_time" sum="Tổng giờ làm" string="Giờ làm việc"/>
+                                    <field name="late_minutes" sum="Tổng phút trễ"/>
+                                    <field name="overtime_hours" widget="float_time" sum="Tổng giờ tăng ca"/>
+                                    <field name="duration_attendance" sum="Tổng công ngày" string="Số công ngày"/>
+                                    <field name="attendance_type" widget="badge" decoration-danger="attendance_type in ('absent', 'late_and_early')" decoration-warning="attendance_type == 'early_leave'" decoration-info="attendance_type == 'late'" decoration-primary="attendance_type == 'halfday'" decoration-success="attendance_type == 'normal'" string="Trạng thái"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+   
+
+    <!-- Search View -->
+    <record id="sem_hr_attendance_report_view_search" model="ir.ui.view">
+        <field name="name">sem.hr.attendance.report.view.search</field>
+        <field name="model">hr.attendance.report</field>
+        <field name="arch" type="xml">
+            <search string="Tìm kiếm báo cáo">
+                <field name="employee_id"/>
+                <field name="month"/>
+                <field name="year"/>
+                <filter string="Năm nay" name="this_year" domain="[('year', '=', context_today().strftime('%Y'))]"/>
+                <group>
+                    <filter string="Nhân viên" name="group_employee" context="{'group_by': 'employee_id'}"/>
+                    <filter string="Tháng" name="group_month" context="{'group_by': 'month'}"/>
+                    <filter string="Năm" name="group_year" context="{'group_by': 'year'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    
+
+   
+
+    <record id="hr_attendance_summary_report_action" model="ir.actions.act_window">
+        <field name="name">Báo cáo chấm công</field>
+        <field name="res_model">hr.attendance.report</field>
+        <field name="view_mode">list,form</field>
+        <field name="search_view_id" ref="sem_hr_attendance_report_view_search"/>
+        <field name="context">{}</field>
+        <field name="view_ids" eval="[
+            (5, 0, 0),
+            (0, 0, {'view_mode': 'list', 'view_id': ref('sem_attendance.sem_hr_attendance_report_view_tree')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('sem_attendance.sem_hr_attendance_report_view_form')})
+        ]"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Báo cáo chấm công
+            </p>
+            <p>
+                Dữ liệu sẽ được tự động tổng hợp từ các bản ghi chấm công.
+            </p>
+        </field>
+    </record>
+</odoo>

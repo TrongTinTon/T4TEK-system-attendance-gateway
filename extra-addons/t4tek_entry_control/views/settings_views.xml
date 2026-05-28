@@ -3,11 +3,11 @@
         <field name="name">entry.control.settings.form</field>
         <field name="model">entry.control.settings</field>
         <field name="arch" type="xml">
-            <form string="Entry Control Settings">
+            <form string="Gatekeeper Settings">
                 <sheet>
                     <group string="Timezone">
                         <field name="attendance_timezone" placeholder="Asia/Ho_Chi_Minh"/>
-                        <div class="text-muted" colspan="2">This timezone is used by Entry Control for Attendance Logs, system-generated 23:59/00:00 boundary logs, Create Attendances, and Cron. It does not depend on the current Odoo user's timezone.</div>
+                        <div class="text-muted" colspan="2">This timezone is used by Gatekeeper for Attendance Logs, system-generated 23:59/00:00 boundary logs, Create Attendances, and Cron. It does not depend on the current Odoo user's timezone.</div>
                     </group>
                 </sheet>
                 <footer>

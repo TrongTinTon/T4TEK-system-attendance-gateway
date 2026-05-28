@@ -6,7 +6,7 @@ from odoo import api, fields, models, _
 
 class EntryControlCreateAttendanceWizard(models.TransientModel):
     _name = "entry.control.create.attendance.wizard"
-    _description = "Create Attendances from Entry Control Logs"
+    _description = "Create Attendances from Gatekeeper Logs"
 
     @api.model
     def _default_business_today(self):

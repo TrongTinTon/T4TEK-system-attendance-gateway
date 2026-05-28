@@ -13,7 +13,7 @@ _logger = logging.getLogger(__name__)
 
 class EntryControlAttendanceLog(models.Model):
     _name = "entry.control.attendance.log"
-    _description = "Entry Control Attendance Log"
+    _description = "Gatekeeper Attendance Log"
     _order = "check_time desc, id desc"
 
     _DEFAULT_ATTENDANCE_TIMEZONE = "Asia/Ho_Chi_Minh"
@@ -459,7 +459,7 @@ class EntryControlAttendanceLog(models.Model):
     def _attendance_timezone_name(self):
         """Module business timezone.
 
-        This setting is the single fallback timezone for Entry Control. It is
+        This setting is the single fallback timezone for Gatekeeper. It is
         independent from the current Odoo user's timezone and is used for:
         - controller timestamps that do not carry an explicit timezone;
         - system-generated Attendance Logs whose Device Timezone is empty;
@@ -722,51 +722,17 @@ class EntryControlAttendanceLog(models.Model):
     @api.model
     def ingest_direct_log(self, controller, data):
         data = dict(data or {})
-        # API contract is strict: attendance payload must identify the device by
-        # the physical ZKTeco Serial Number in ``serial_number`` only.
-        serial = str(
-            data.get("serial_number")
-            or data.get("serialNumber")
-            or data.get("device_serial_number")
-            or data.get("deviceSerialNumber")
-            or ""
-        ).strip()
+        serial = data.get("serial_number")
         api_employee_id = str(data.get("employee_id") or data.get("employeeId") or "").strip()
         legacy_pin = str(data.get("pin") or "").strip()
-        check_raw = (
-            data.get("check_time")
-            or data.get("checkTime")
-            or data.get("device_check_time")
-            or data.get("deviceCheckTime")
-            or data.get("local_check_time")
-            or data.get("localCheckTime")
-            or data.get("time")
-            or data.get("timestamp")
-        )
-        timezone_hint = (
-            data.get("device_timezone")
-            or data.get("deviceTimezone")
-            or data.get("timezone")
-            or data.get("tz")
-        )
-        check_dt, parsed_tz = self._parse_dt(check_raw, timezone_hint=timezone_hint)
-        if parsed_tz and not self._device_timezone_matches_module(parsed_tz, check_dt):
-            _logger.warning(
-                "[ENTRY CONTROL] Device timezone %s does not match module timezone %s for check_time=%s. "
-                "The explicit controller offset is used for UTC storage; Time column displays in module timezone.",
-                parsed_tz, self._attendance_timezone_name(), check_raw,
-            )
+        check_time = data.get("check_time")
         check_type = str(data.get("check_type") or data.get("checkType") or "").strip()
         verify_type = str(data.get("verify_type") or data.get("verifyType") or "").strip()
-
         Device = self.env["entry.control.device"].sudo()
         device = Device.browse()
         if serial:
             device = Device.search([("serial_number", "=", serial)], limit=1)
             if not device:
-                # Create a placeholder from the attendance payload so the log is
-                # still linked by Serial Number even if /devices/report has not
-                # run yet. IP address remains informational only.
                 device = Device.upsert_from_payload(controller, {
                     "serial_number": serial,
                     "name": serial,
@@ -777,27 +743,25 @@ class EntryControlAttendanceLog(models.Model):
         if not employee and legacy_pin:
             employee = self.find_employee_by_pin(legacy_pin)
 
-        existing = self._find_existing_log(controller, device, serial, employee, check_dt, check_type, verify_type)
+        existing = self._find_existing_log(controller, device, serial, employee, check_time, check_type, verify_type)
         if existing:
             return existing, True
 
-        # Direction is decided by the server only. Device check_type / AttState
-        # is stored as raw information, not used as the operational direction.
-        direction = self._infer_direction(employee, check_dt)
+        direction = self._infer_direction(employee, check_time)
         verify_method = data.get("verify_method") or data.get("verifyMethod") or self._verify_method_from_type(verify_type)
         vals = {
             "controller_id": controller.id,
             "device_id": device.id if device else False,
             "serial_number": serial,
-            "device_timezone": parsed_tz,
             "employee_id": employee.id if employee else False,
             "direction": direction,
-            "check_time": check_dt,
+            "check_time":  fields.Datetime.to_datetime(check_time) or False,
             "verify_method": verify_method if verify_method in dict(self._fields["verify_method"].selection) else "unknown",
             "verify_type": verify_type,
             "check_type": check_type,
             "sync_status": "success",
         }
+
         rec = self.sudo().with_context(entry_control_check_time_is_utc=True).create(vals)
         # Keep raw Attendance Logs only when API receives logs.
         # hr.attendance records are created manually from the list-view
@@ -1003,7 +967,7 @@ class EntryControlAttendanceLog(models.Model):
         ], order="check_time asc, id asc")
 
         _logger.info(
-            "[ENTRY CONTROL] Daily attendance cron started. target_range=%s..%s tz=%s logs=%s",
+            "[GATEKEEPER] Daily attendance cron started. target_range=%s..%s tz=%s logs=%s",
             day_from, day_to, self._attendance_timezone_name(), len(logs)
         )
         if logs:
@@ -1019,7 +983,7 @@ class EntryControlAttendanceLog(models.Model):
         params.set_param("entry_control.last_daily_attendance_cron_log_count", str(len(logs)))
         params.set_param("entry_control.last_daily_attendance_cron_timezone", self._attendance_timezone_name())
         _logger.info(
-            "[ENTRY CONTROL] Daily attendance cron finished. target_range=%s..%s logs=%s",
+            "[GATEKEEPER] Daily attendance cron finished. target_range=%s..%s logs=%s",
             day_from, day_to, len(logs)
         )
         return True
@@ -1034,7 +998,7 @@ class EntryControlAttendanceLog(models.Model):
 
     @api.model
     def _managed_attendances_for_day(self, Attendance, day_logs, employee_id, day_start, day_end):
-        """Return hr.attendance rows that are clearly managed by Entry Control.
+        """Return hr.attendance rows that are clearly managed by Gatekeeper.
 
         Never blindly update an arbitrary/manual Odoo attendance row just
         because it is on the same day. This prevents Create Attendances/Cron
@@ -1056,13 +1020,13 @@ class EntryControlAttendanceLog(models.Model):
 
     @api.model
     def _cleanup_entry_control_open_attendances(self, Attendance, employee_ids, start_dt, end_dt):
-        """Remove stale open hr.attendance rows previously created by Entry Control.
+        """Remove stale open hr.attendance rows previously created by Gatekeeper.
 
         Attendance Logs are the source of truth. The synthetic 00:00 Check In
         row is allowed to exist in Attendance Logs, but it must not leave an
         open hr.attendance row that blocks the next day's real attendance.
         We only clean records that are clearly managed by this module, using
-        the message field added by Entry Control.
+        the message field added by Gatekeeper.
         """
         employee_ids = [eid for eid in set(employee_ids or []) if eid]
         if not employee_ids or "message" not in Attendance._fields:
@@ -1077,7 +1041,7 @@ class EntryControlAttendanceLog(models.Model):
         stale = Attendance.search(domain)
         if stale:
             _logger.info(
-                "[ENTRY CONTROL] Removing %s stale open Entry Control attendance row(s) before recalculation.",
+                "[GATEKEEPER] Removing %s stale open Gatekeeper attendance row(s) before recalculation.",
                 len(stale),
             )
             stale.unlink()
@@ -1101,7 +1065,7 @@ class EntryControlAttendanceLog(models.Model):
         if not log or not log.check_time:
             return False
         dt = fields.Datetime.to_datetime(log.check_time)
-        return dt.replace(tzinfo=None) if dt else False
+        return dt
 
     def action_sync_hr_attendance(self):
         # Attendance calculation rule:
@@ -1182,8 +1146,9 @@ class EntryControlAttendanceLog(models.Model):
             #   Real log:    check_time 03:29 + device_timezone +07 -> UI 10:29
             #   System log:  check_time 16:59 + device_timezone empty -> UI 23:59
             #   System log:  check_time 17:00 previous day + device_timezone empty -> UI 00:00 next day
-            check_in = Log._hr_attendance_utc_from_log(first_in_log)
-            check_out = Log._hr_attendance_utc_from_log(last_out_log) if last_out_log else False
+            # check_in = Log._hr_attendance_utc_from_log(first_in_log)
+            check_in = first_in_log.check_time
+            check_out = last_out_log.check_time
 
             group_tz = Log._device_timezone_for_logs(day_logs)
             day_start, day_end = Log._business_day_bounds_utc(day, group_tz)

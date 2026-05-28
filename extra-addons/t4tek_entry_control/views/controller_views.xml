@@ -78,7 +78,7 @@
                                 <list>
                                     <field name="employee_id"/>
                                     <field name="direction" widget="badge"/>
-                                    <field name="time_display" string="Time"/>
+                                    <field name="check_time" string="Time"/>
                                                                             <field name="serial_number" string="Device"/>
                                     <field name="verify_method"/>
                                     <field name="sync_status" widget="badge"/>

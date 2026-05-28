@@ -1,0 +1,338 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ===== FORM VIEW (Popup) - must be defined before calendar view ===== -->
+    <record id="sem_attendance_view_form_t4tek" model="ir.ui.view">
+        <field name="name">sem.attendance.form.t4tek</field>
+        <field name="model">hr.attendance</field>
+        <field name="arch" type="xml">
+            <form string="Employee attendances" duplicate="false">
+                <header>
+                    <field
+                        name="overtime_status"
+                        widget="statusbar"
+                        readonly="1"
+                        options="{'clickable': '1'}"
+                        invisible="not overtime_status"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group colspan="2">
+                            <group col="1" name="group_employee">
+                                <field
+                                    id="employee_no_officer"
+                                    name="employee_id"
+                                    widget="many2one_avatar_employee"
+                                    readonly="1"
+                                    groups="!sem_attendance.sem_attendance_officer,!sem_attendance.sem_attendance_user"/>
+                                <field
+                                    id="employee_no_manager"
+                                    name="employee_id"
+                                    widget="many2one_avatar_employee"
+                                    domain="[
+                                        ('attendance_manager_id', '=', uid),
+                                        ('company_id', 'in', allowed_company_ids),
+                                    ]"
+                                    groups="sem_attendance.sem_attendance_officer,!sem_attendance.sem_attendance_user"/>
+                                <field
+                                    id="employee_manager"
+                                    name="employee_id"
+                                    widget="many2one_avatar_employee"
+                                    domain="[
+                                        ('company_id', 'in', allowed_company_ids),
+                                    ]"
+                                    groups="sem_attendance.sem_attendance_user"/>
+                                <field name="check_in" options="{'rounding': 0}" readonly="not is_manager"/>
+                                <field name="check_out" options="{'rounding': 0}" placeholder="Currently Working" readonly="not is_manager"/>
+                                <!-- Đã check vào ca làm việc nào -->
+                                <field name="rsc_attendance_ids" widget="many2many_tags" readonly="1"/>
+                            </group>
+                            <group col="2">
+                                <field name="worked_hours" string="Worked Time" widget="float_time"/>
+                                <field name="overtime_hours" widget="float_time" string="Worked Extra Hours" invisible="overtime_hours == validated_overtime_hours"/>
+                                <label for="validated_overtime_hours"/>
+                                <div>
+                                    <field
+                                        name="validated_overtime_hours"
+                                        style="width:5ch"
+                                        widget="float_time"
+                                        readonly="1"/>
+                                    <!-- TODO algin icons baseline with text -->
+                                    <button
+                                        class="oe_stat_button flex-shrink-0"
+                                        string=" "
+                                        help="Approve all overtimes for the same employee and date"
+                                        invisible="not is_manager or overtime_status not in ['to_approve', 'refused'] or not overtime_status"
+                                        name="action_approve_overtime"
+                                        icon="fa-check"
+                                        type="object"
+                                        groups="sem_attendance.sem_attendance_officer"/>
+                                    <button
+                                        class="oe_stat_button flex-shrink-0"
+                                        string=" "
+                                        help="Refuse all overtimes for the same employee and date"
+                                        invisible="not is_manager or overtime_status not in ['to_approve', 'approved'] or not overtime_status"
+                                        name="action_refuse_overtime"
+                                        icon="fa-times"
+                                        type="object"
+                                        groups="sem_attendance.sem_attendance_officer"/>
+                                </div>
+                            </group>
+                        </group>
+                        <separator string="Check In"/>
+                        <group name="check_in_group" colspan="2">
+                            <group>
+                                <group>
+                                    <field name="in_mode"/>
+                                    <field name="in_ip_address" invisible="in_mode == 'manual' or not device_tracking_enabled"/>
+                                    <field name="in_browser" invisible="in_mode == 'manual' or not device_tracking_enabled"/>
+                                </group>
+                            </group>
+                            <group invisible="in_mode == 'manual' or not device_tracking_enabled">
+                                <field name="in_location"/>
+                                <label for="in_latitude" string="GPS Coordinates"/>
+                                <div>
+                                    <div class="o_row">
+                                        <span>
+                                            <field name="in_latitude"/>
+                                        </span>,
+                                        <span>
+                                            <field name="in_longitude" nolabel="1"/>
+                                        </span>
+                                    </div>
+                                    <button
+                                        name="action_in_attendance_maps"
+                                        type="object"
+                                        class="btn btn-link ps-0 pt-0 pb-2"
+                                        icon="oi-arrow-right"
+                                        string="View on Maps"
+                                        colspan="2"/>
+                                </div>
+                            </group>
+                        </group>
+                        <separator string="Check Out" name="check_out_separator" invisible="not check_out"/>
+                        <group colspan="2" name="check_out_group" invisible="not check_out">
+                            <group>
+                                <group>
+                                    <field name="out_mode" string="Mode"/>
+                                    <field name="out_ip_address" string="IP Address" invisible="in_mode == 'manual' or not device_tracking_enabled"/>
+                                    <field name="out_browser" string="Browser" invisible="in_mode == 'manual' or not device_tracking_enabled"/>
+                                </group>
+                            </group>
+                            <group invisible="out_mode == 'manual' or not device_tracking_enabled">
+                                <field name="out_location"/>
+                                <label for="out_latitude" string="GPS Coordinates"/>
+                                <div>
+                                    <div class="o_row">
+                                        <span>
+                                            <field name="out_latitude"/>
+                                        </span>,
+                                        <span>
+                                            <field name="out_longitude" nolabel="1"/>
+                                        </span>
+                                    </div>
+                                    <button
+                                        name="action_out_attendance_maps"
+                                        type="object"
+                                        class="btn btn-link ps-0 pt-0 pb-2"
+                                        icon="oi-arrow-right"
+                                        string="View on Maps"
+                                        colspan="2"/>
+                                </div>
+                            </group>
+                        </group>
+                    </group>
+                    <notebook invisible="not overtime_status">
+                        <page string="Overtime Details">
+                            <field name="linked_overtime_ids">
+                                <list editable="bottom">
+                                    <field name="rule_ids" widget="many2many_tags" readonly="1"/>
+                                    <field name="duration" widget="float_time" readonly="1"/>
+                                    <field name="manual_duration" widget="float_time" readonly="0"/>
+                                    <field name="amount_rate" widget="percentage"/>
+                                    <field name="status" widget="badge" readonly="1" decoration-warning="status == 'to_approve'" decoration-success="status == 'approved'" decoration-danger="status == 'refused'"/>
+                                    <button
+                                        class="oe_stat_button"
+                                        string="Approve"
+                                        invisible="not is_manager or status not in ['to_approve', 'refused']"
+                                        name="action_approve"
+                                        icon="fa-check"
+                                        type="object"
+                                        groups="sem_attendance.sem_attendance_officer"/>
+                                    <button
+                                        class="oe_stat_button"
+                                        string="Refuse"
+                                        invisible="not is_manager or status not in ['to_approve', 'approved']"
+                                        name="action_refuse"
+                                        icon="fa-times"
+                                        type="object"
+                                        groups="sem_attendance.sem_attendance_officer"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+
+    
+
+    <!-- ===== FORM VIEW (Popup Quick Create) ===== -->
+    <record id="hr_attendance_calendar_popup_form" model="ir.ui.view">
+        <field name="name">hr.attendance.calendar.popup.form</field>
+        <field name="model">hr.attendance</field>
+        <field name="priority">50</field>
+        <field name="arch" type="xml">
+            <form string="Chấm công">
+                <group>
+                    <group name="group_employee">
+                        <field name="employee_id" readonly="1" groups="!sem_attendance.sem_attendance_user"/>
+                        <field name="employee_id" readonly="0" groups="sem_attendance.sem_attendance_user"/>
+                        <field name="department_id" readonly="1"/>
+                    </group>
+                    <group name="group_check_time">
+                        <field name="check_in" options="{'rounding': 0}"/>
+                        <field name="check_out" options="{'rounding': 0}"/>
+                    </group>
+                </group>
+                <group name="group_note">
+                    <field name="check_in_note" placeholder="Nhập ghi chú vào..."/>
+                    <field name="check_out_note" placeholder="Nhập ghi chú ra..."/>
+                </group>    
+            </form>
+        </field>
+    </record>
+
+    <!-- ===== CALENDAR VIEW ===== -->
+    <record id="sem_attendance_calendar_view_calendar" model="ir.ui.view">
+        <field name="name">sem.attendance.calendar.calendar</field>
+        <field name="model">hr.attendance</field>
+        <field name="arch" type="xml">
+            <calendar string="Chấm công"
+                      date_start="check_in"
+                      date_stop="check_out"
+                      color="employee_id"
+                      quick_create="0"
+                      event_open_popup="1"
+                      form_view_id="%(sem_attendance.hr_attendance_calendar_popup_form)d"
+                      mode="week"
+                      js_class="attendance_calendar">
+                <field name="employee_id" avatar_field="avatar_128"/>
+                <field name="worked_hours" widget="float_time"/>
+            </calendar>
+        </field>
+    </record>
+
+    <!-- ===== LIST VIEW ===== -->
+    <record id="sem_view_attendance_list_t4tek" model="ir.ui.view">
+        <field name="name">hr.attendance.list.t4tek</field>
+        <field name="model">hr.attendance</field>
+        <field name="arch" type="xml">
+            <list
+                js_class="attendance_list_view"
+                string="Employee attendances"
+                decoration-success="color == 10"
+                decoration-danger="color == 1"
+                duplicate="false">
+                <header>
+                    <button class="btn-secondary" string="Approve Extra Hours" name="action_approve_overtime" type="object"/>
+                    <button class="btn-secondary" string="Refuse Extra Hours" name="action_refuse_overtime" type="object"/>
+                </header>
+                <field name="employee_id" widget="many2one_avatar_employee"/>
+                <field name="check_in"/>
+                <field name="check_out" options="{}"/>
+                <field name="worked_hours" string="Worked Hours" widget="float_time"/>
+                <field name="overtime_hours" string="Worked Extra Hours" optional="show" widget="float_time"/>
+                <field name="validated_overtime_hours" string="Extra Hours" optional="show" widget="float_time"/>
+                <field name="overtime_status" optional="hidden" widget="badge" decoration-warning="overtime_status == 'to_approve'" decoration-success="overtime_status == 'approved'" decoration-danger="overtime_status == 'refused'"/>
+                <field name="in_mode" string="Input Mode (In)" optional="hidden"/>
+                <field name="out_mode" string="Input Mode (Out)" optional="hidden"/>
+                <field name="in_latitude" string="Latitude (In)" optional="hidden"/>
+                <field name="in_longitude" string="Longitude (In)" optional="hidden"/>
+                <field name="in_location" string="Location (In)" optional="hidden"/>
+                <field name="out_latitude" string="Latitude (Out)" optional="hidden"/>
+                <field name="out_longitude" string="Longitude (Out)" optional="hidden"/>
+                <field name="out_location" string="Location (Out)" optional="hidden"/>
+                <field name="create_uid" optional="hidden"/>
+                <field name="write_uid" optional="hidden"/>
+                <field name="write_date" optional="hidden"/>
+                <field name="color" column_invisible="1"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="sem_attendance_calendar_view_list" model="ir.ui.view">
+        <field name="name">sem.attendance.calendar.list</field>
+        <field name="model">hr.attendance</field>
+        <field name="arch" type="xml">
+            <list string="Chấm công">
+                <field name="employee_id"/>
+                <field name="department_id" optional="show"/>
+                <field name="check_in"/>
+                <field name="check_out"/>
+                <field name="worked_hours" widget="float_time"/>
+                <!-- <field name="duration_attendance" sum="Tổng công ca"/> -->
+                <field name="check_in_note" optional="hide"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- ===== SEARCH VIEW ===== -->
+    <record id="sem_attendance_view_filter_t4tek" model="ir.ui.view">
+        <field name="name">sem_attendance_view_filter_t4tek</field>
+        <field name="model">hr.attendance</field>
+        <field name="arch" type="xml">
+            <search string="T4TEK SEM Attendance Search">
+                <field name="employee_id"/>
+                <field name="department_id" operator="child_of"/>
+                <field name="check_in"/>
+                <filter string="My Attendances" name="myattendances" domain="[('employee_id.user_id', '=', uid)]" />
+                <filter string="My Team" name="myteam" domain="[('employee_id.parent_id.user_id', '=', uid)]"/>
+                <separator/>
+                <filter string="At Work" name="nocheckout" domain="[('check_out', '=', False)]" />
+                <filter string="Errors" name="errors"
+                        domain="['|', ('worked_hours', '&gt;=', 16), '&amp;', ('check_out', '=', False), ('check_in', '&lt;=', '-1d')]"/>
+                <filter string="Automatically Checked-Out" name="auto_check"
+                        domain="[('out_mode', '=', 'auto_check_out')]"/>
+                <separator/>
+                <filter string="Date" name="check_in_filter" date="check_in"/>
+                <separator/>
+                <filter
+                    string="Active Employees"
+                    name="activeemployees"
+                    domain="[('employee_id.active', '=', True)]"/>
+                <filter
+                    string="Archived Employees"
+                    name="archivedemployees"
+                    domain="[('employee_id.active', '=', False)]"/>
+                <separator invisible="1"/>
+                <filter string="Last 3 Months" invisible="1" name="last_three_months" domain="[('check_in','&gt;=', '-3m')]"/>
+                <group>
+                    <filter string="Employee" name="employee" context="{'group_by': 'employee_id'}"/>
+                    <filter string="Department" name="departement" context="{'group_by': 'department_id'}"/>
+                    <filter string="Manager" name="manager" context="{'group_by': 'manager_id'}"/>
+                    <filter string="Method" name="groupby_mode_in" context="{'group_by': 'in_mode'}"/>
+                    <filter string="Date" name="groupby_name" context="{'group_by': 'check_in:month'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- ===== ACTION ===== -->
+    <record id="hr_attendance_calendar_action" model="ir.actions.act_window">
+        <field name="name">Chấm công (Lịch)</field>
+        <field name="res_model">hr.attendance</field>
+        <field name="view_mode">calendar,list,form</field>
+        <field name="search_view_id" ref="sem_attendance_view_filter_t4tek"/>
+        <field name="context">{"form_view_ref":"sem_attendance.sem_attendance_view_form_t4tek"}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Click vào lịch để tạo chấm công mới
+            </p>
+        </field>
+    </record>
+
+</odoo>

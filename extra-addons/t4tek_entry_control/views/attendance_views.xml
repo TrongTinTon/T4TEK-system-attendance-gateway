@@ -41,7 +41,7 @@
                 </header>
                 <field name="employee_id"/>
                 <field name="direction" widget="badge" decoration-success="direction == 'in'" decoration-info="direction == 'out'"/>
-                <field name="time_display" string="Time"/>
+                <field name="check_time" string="Time"/>
                 <field name="serial_number" string="Device"/>
                 <field name="device_timezone" optional="show"/>
                 <field name="verify_method"/>
@@ -66,8 +66,7 @@
                         </group>
                         <group string="Attendance">
                             <field name="direction"/>
-                            <field name="time_display" string="Time" readonly="1"/>
-                            <field name="check_time" string="Check Time (UTC Storage)" readonly="1"/>
+                            <field name="check_time" string="Check Time (UTC Storage)" />
                             <field name="verify_method"/>
                             <field name="verify_type"/>
                         </group>

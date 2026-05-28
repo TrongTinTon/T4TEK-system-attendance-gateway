@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Root Menu for the new Attendance App -->
+        <menuitem id="menu_sem_attendance_root" name="SEMs - Chấm công" sequence="20" web_icon="hr_attendance,static/description/icon.png"/>
+
+        <!-- Dashboard Menu Removed -->
+        <!-- Sub-menu: Chấm công (Custom Grid) -->
+        <menuitem id="menu_hr_attendance"
+            name="Chấm công (SEMs)"
+            parent="menu_sem_attendance_root"
+            action="hr_attendance_calendar_action"
+            sequence="20"/>
+
+        <!-- Menu Import Chấm Công bằng Excel -->
+        <menuitem id="menu_import_attendance_wizard"
+            name="Nhập Chấm Công (Excel)"
+            parent="menu_sem_attendance_root"
+            action="action_import_attendance_wizard"
+            sequence="25"/>
+
+        <!-- Sub-menu: Ca làm việc -->
+        <!-- <menuitem id="menu_hr_shift"
+            name="Ca làm việc"
+            parent="menu_sem_attendance_root"
+            action="hr_shift_action"
+            sequence="30"/> -->
+
+        <!-- Sub-menu: Cấu hình chấm công -->
+        <!-- <menuitem id="menu_hr_attendance_config"
+            name="Cấu hình chấm công"
+            parent="menu_sem_attendance_root"
+            action="action_hr_attendance_config"
+            sequence="100"/> -->
+
+        <menuitem id="menu_resource_calendar_attendance_inherit"
+              name="Lịch làm việc"
+              action="resource.action_resource_calendar_form"
+              parent="menu_sem_attendance_root"
+              sequence="30"/>
+
+        <menuitem id="menu_hr_attendance_report_root" 
+                  name="Báo cáo chấm công" 
+                  parent="menu_sem_attendance_root" sequence="40"/>
+
+       
+
+        <menuitem id="menu_hr_attendance_report_detail" 
+                  name="Báo cáo chi tiết" 
+                  action="attendance_report_detail_action" 
+                  parent="menu_hr_attendance_report_root" 
+                  sequence="50"/> 
+                  
+        <!-- Menu Item -->
+        <menuitem id="menu_hr_attendance_config"
+                  name="Cấu hình chấm công"
+                  action="hr_settings_action"
+                  groups="sem_attendance.sem_attendance_manager"
+                  parent="menu_sem_attendance_root"
+                  sequence="60"/>
+    </data>
+</odoo>

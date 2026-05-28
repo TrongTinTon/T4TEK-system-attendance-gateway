@@ -6,13 +6,13 @@ from odoo.exceptions import UserError
 
 class EntryControlSettings(models.TransientModel):
     _name = "entry.control.settings"
-    _description = "Entry Control Settings"
+    _description = "Gatekeeper Settings"
 
     attendance_timezone = fields.Char(
         string="Module Timezone",
         required=True,
         default=lambda self: self._default_attendance_timezone(),
-        help="Business timezone used by Entry Control for Attendance Logs, system-generated 23:59/00:00 logs, Create Attendances, and Cron.",
+        help="Business timezone used by Gatekeeper for Attendance Logs, system-generated 23:59/00:00 logs, Create Attendances, and Cron.",
     )
 
     @api.model
@@ -49,7 +49,7 @@ class EntryControlSettings(models.TransientModel):
             "type": "ir.actions.client",
             "tag": "display_notification",
             "params": {
-                "title": _("Entry Control Settings"),
+                "title": _("Gatekeeper Settings"),
                 "message": _("Module timezone saved: %s") % tz_name,
                 "type": "success",
                 "sticky": False,
@@ -67,7 +67,7 @@ class EntryControlSettings(models.TransientModel):
             "type": "ir.actions.client",
             "tag": "display_notification",
             "params": {
-                "title": _("Entry Control Settings"),
+                "title": _("Gatekeeper Settings"),
                 "message": _("Module timezone reset to default: %s") % tz_name,
                 "type": "success",
                 "sticky": False,

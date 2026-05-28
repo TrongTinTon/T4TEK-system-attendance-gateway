@@ -1,0 +1,105 @@
+.o_attendance_dashboard {
+
+    padding: 20px;
+    background-color: #f8f9fa;
+    min-height: 100vh;
+
+    .o_dashboard_header {
+        margin-bottom: 30px;
+        border-bottom: 2px solid #dee2e6;
+        padding-bottom: 15px;
+    }
+
+    .o_dashboard_header h1 {
+        color: #333;
+        font-size: 28px;
+        font-weight: 600;
+        margin: 0;
+    }
+
+    .o_dashboard_loading {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 400px;
+        font-size: 18px;
+        color: #666;
+    }
+
+    .o_dashboard_loading i {
+        margin-right: 10px;
+        font-size: 24px;
+    }
+
+    .o_dashboard_content {
+        max-width: 1200px;
+    }
+
+    .o_stats_container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 40px;
+    }
+
+    .o_stat_card {
+        background-color: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        text-align: center;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .o_stat_card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+
+    .o_stat_value {
+        font-size: 32px;
+        font-weight: bold;
+        margin-bottom: 10px;
+    }
+
+    .o_stat_label {
+        font-size: 14px;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .o_stat_present .o_stat_value {
+        color: #28a745;
+    }
+
+    .o_stat_absent .o_stat_value {
+        color: #dc3545;
+    }
+
+    .o_stat_late .o_stat_value {
+        color: #ffc107;
+    }
+
+    .o_stat_leave .o_stat_value {
+        color: #17a2b8;
+    }
+
+    .o_attendance_list_section {
+        background-color: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .o_attendance_list_section h2 {
+        margin-top: 0;
+        margin-bottom: 20px;
+        color: #333;
+        font-size: 20px;
+    }
+
+    .o_attendance_list_section .btn {
+        margin-bottom: 20px;
+    }
+}

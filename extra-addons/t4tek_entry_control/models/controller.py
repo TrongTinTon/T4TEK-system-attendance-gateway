@@ -7,7 +7,7 @@ from odoo.exceptions import UserError
 
 class EntryControlController(models.Model):
     _name = "entry.control.controller"
-    _description = "Entry Control Controller"
+    _description = "Gatekeeper Controller"
     _order = "last_heartbeat_at desc, id desc"
 
     controller_uid = fields.Char(string="Controller ID", required=True, index=True, copy=False)
