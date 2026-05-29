@@ -537,18 +537,20 @@ class EntryControlAPI(http.Controller):
         controller, error = self._auth_controller(data)
         if error:
             return error
+            
         logs = data.get("logs") or []
         if isinstance(logs, dict):
             logs = [logs]
+            
         Log = request.env["entry.control.attendance.log"].sudo()
         results = []
         failed = []
+        
         for idx, log in enumerate(logs if isinstance(logs, list) else []):
             try:
+                _logger.info("--- [API PUSH] Log index %s từ thiết bị gửi lên: %s", idx, str(log))
                 rec, duplicate = Log.ingest_direct_log(controller, log)
-
-                local_dt = rec._utc_naive_to_local(rec.check_time, rec.device_timezone) if rec.check_time else False
-                device_local_display = local_dt.strftime("%m/%d/%Y %H:%M:%S") if local_dt else ""
+                _logger.info("--- [ingest_direct_log] Log index %s đã xử lý: %s", idx, str(log))
                 results.append({
                     "index": idx,
                     "attendance_log_id": rec.id,
@@ -556,15 +558,21 @@ class EntryControlAPI(http.Controller):
                     "status": "success" if rec.sync_status != "failed" else "failed",
                     "message": rec.error_message or "",
                     "direction": rec.direction,
-                    "check_time_device_local": device_local_display,
-                    "check_time_display": device_local_display,
                     "device_timezone": rec.device_timezone,
-                    "module_timezone": rec._attendance_timezone_name(),
                     "duplicate": duplicate,
                 })
                 if rec.sync_status == "failed":
                     failed.append({"index": idx, "error": rec.error_message or "Failed"})
+                    
             except Exception as e:
                 failed.append({"index": idx, "error": str(e)})
+                
         controller.write({"last_sync_at": fields.Datetime.now()})
-        return self._json_response({"ok": not bool(failed), "received": len(logs), "results": results, "items": results, "failed": failed}, 200 if not failed else 207)
+        
+        return self._json_response({
+            "ok": not bool(failed), 
+            "received": len(logs), 
+            "results": results, 
+            "items": results, 
+            "failed": failed
+        }, 200 if not failed else 207)
