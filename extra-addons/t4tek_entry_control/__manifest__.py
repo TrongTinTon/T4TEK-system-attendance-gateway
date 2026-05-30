@@ -11,7 +11,7 @@ Clean controller-client architecture:
 - Controller/device identity uses serial_number; employee identity uses employee code.
 - Attendance Logs remain raw audit data; hr.attendance is created by manual action or scheduled automation.
 """,
-    "version": "19.0.30.71",
+    "version": "19.0.30.73",
     "category": "Human Resources/Attendances",
     "author": "T4TEK",
     "maintainer": "T4TEK",

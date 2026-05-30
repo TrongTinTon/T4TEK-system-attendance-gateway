@@ -9,6 +9,18 @@
                         <field name="attendance_timezone" placeholder="Asia/Ho_Chi_Minh"/>
                         <div class="text-muted" colspan="2">This timezone is used by Gatekeeper for Attendance Logs, system-generated 23:59/00:00 boundary logs, Create Attendances, and Cron. It does not depend on the current Odoo user's timezone.</div>
                     </group>
+                    <group string="Daily Cron Diagnostics">
+                        <field name="last_cron_at" readonly="1"/>
+                        <field name="last_cron_date" readonly="1"/>
+                        <field name="last_cron_timezone" readonly="1"/>
+                        <field name="last_cron_db_start" readonly="1"/>
+                        <field name="last_cron_db_end" readonly="1"/>
+                        <field name="last_cron_employee_count" readonly="1"/>
+                        <field name="last_cron_log_count" readonly="1"/>
+                        <field name="last_cron_created_count" readonly="1"/>
+                        <field name="last_cron_updated_count" readonly="1"/>
+                        <field name="last_cron_failed_count" readonly="1"/>
+                    </group>
                 </sheet>
                 <footer>
                     <button name="action_save" type="object" string="Save" class="btn-primary" groups="t4tek_entry_control.group_entry_control_admin,base.group_system"/>

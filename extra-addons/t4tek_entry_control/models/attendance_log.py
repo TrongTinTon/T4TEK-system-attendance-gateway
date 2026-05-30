@@ -13,6 +13,94 @@ class EntryControlAttendanceLog(models.Model):
     _description = "Gatekeeper Attendance Log"
     _order = "check_time desc, id desc"
 
+    _DEFAULT_ATTENDANCE_TIMEZONE = "Asia/Ho_Chi_Minh"
+    _CONFIG_ATTENDANCE_TIMEZONE = "entry_control.attendance_timezone"
+
+    _CONFIG_CRON_LAST_AT = "entry_control.last_daily_attendance_cron_at"
+    _CONFIG_CRON_LAST_DATE = "entry_control.last_daily_attendance_cron_date"
+    _CONFIG_CRON_LAST_TIMEZONE = "entry_control.last_daily_attendance_cron_timezone"
+    _CONFIG_CRON_LAST_DB_START = "entry_control.last_daily_attendance_cron_db_start"
+    _CONFIG_CRON_LAST_DB_END = "entry_control.last_daily_attendance_cron_db_end"
+    _CONFIG_CRON_LAST_LOG_COUNT = "entry_control.last_daily_attendance_cron_log_count"
+    _CONFIG_CRON_LAST_EMPLOYEE_COUNT = "entry_control.last_daily_attendance_cron_employee_count"
+    _CONFIG_CRON_LAST_CREATED_COUNT = "entry_control.last_daily_attendance_cron_created_count"
+    _CONFIG_CRON_LAST_UPDATED_COUNT = "entry_control.last_daily_attendance_cron_updated_count"
+    _CONFIG_CRON_LAST_FAILED_COUNT = "entry_control.last_daily_attendance_cron_failed_count"
+
+    @api.model
+    def _attendance_timezone_name(self):
+        """Return the effective Gatekeeper business timezone.
+
+        The value is stored in ir.config_parameter so cron, manual attendance
+        creation, system-generated boundary logs, and API diagnostics all use
+        the same module-level timezone instead of the current user's timezone.
+        """
+        value = self.env["ir.config_parameter"].sudo().get_param(
+            self._CONFIG_ATTENDANCE_TIMEZONE,
+            self._DEFAULT_ATTENDANCE_TIMEZONE,
+        )
+        tz_name = str(value or "").strip() or self._DEFAULT_ATTENDANCE_TIMEZONE
+        try:
+            ZoneInfo(tz_name)
+        except Exception:
+            _logger.warning(
+                "Invalid Gatekeeper timezone config %r. Falling back to %s.",
+                tz_name,
+                self._DEFAULT_ATTENDANCE_TIMEZONE,
+            )
+            tz_name = self._DEFAULT_ATTENDANCE_TIMEZONE
+            self.env["ir.config_parameter"].sudo().set_param(
+                self._CONFIG_ATTENDANCE_TIMEZONE,
+                tz_name,
+            )
+        return tz_name
+
+    @api.model
+    def _attendance_zoneinfo(self):
+        return ZoneInfo(self._attendance_timezone_name())
+
+    @api.model
+    def _module_now(self):
+        now_utc = fields.Datetime.now()
+        now_local = now_utc.replace(tzinfo=timezone.utc).astimezone(self._attendance_zoneinfo())
+        return now_utc, now_local
+
+    @api.model
+    def _local_day_utc_bounds(self, day):
+        day = fields.Date.to_date(day)
+        tz = self._attendance_zoneinfo()
+        start_local = datetime.combine(day, time.min, tzinfo=tz)
+        end_local = start_local + timedelta(days=1)
+        db_start = start_local.astimezone(timezone.utc).replace(tzinfo=None)
+        db_end = end_local.astimezone(timezone.utc).replace(tzinfo=None)
+        return start_local, end_local, db_start, db_end
+
+    @api.model
+    def _write_daily_cron_metrics(self, **metrics):
+        """Persist last cron diagnostics in ir.config_parameter.
+
+        This is intentionally best-effort so a metrics write cannot break the
+        attendance cron or a module upgrade.
+        """
+        try:
+            ICP = self.env["ir.config_parameter"].sudo()
+            mapping = {
+                self._CONFIG_CRON_LAST_AT: metrics.get("last_at"),
+                self._CONFIG_CRON_LAST_DATE: metrics.get("business_date"),
+                self._CONFIG_CRON_LAST_TIMEZONE: metrics.get("timezone"),
+                self._CONFIG_CRON_LAST_DB_START: metrics.get("db_start"),
+                self._CONFIG_CRON_LAST_DB_END: metrics.get("db_end"),
+                self._CONFIG_CRON_LAST_LOG_COUNT: metrics.get("log_count", 0),
+                self._CONFIG_CRON_LAST_EMPLOYEE_COUNT: metrics.get("employee_count", 0),
+                self._CONFIG_CRON_LAST_CREATED_COUNT: metrics.get("created_count", 0),
+                self._CONFIG_CRON_LAST_UPDATED_COUNT: metrics.get("updated_count", 0),
+                self._CONFIG_CRON_LAST_FAILED_COUNT: metrics.get("failed_count", 0),
+            }
+            for key, value in mapping.items():
+                ICP.set_param(key, "" if value is None else str(value))
+        except Exception:
+            _logger.exception("Could not write Gatekeeper daily cron metrics.")
+
     # =========================================================================
     # FIELDS DEFINITION
     # =========================================================================
@@ -169,8 +257,15 @@ class EntryControlAttendanceLog(models.Model):
 
     @api.model
     def _business_day_bounds_local(self, day):
+        """Backward-compatible local day bounds as naive local datetimes.
+
+        Prefer _local_day_utc_bounds() for DB domains. The end value is the
+        start of the next local day so callers can safely use < end.
+        """
         day = fields.Date.to_date(day)
-        return (datetime.combine(day, time.min), datetime.combine(day, time(23, 59, 59)))
+        start_local = datetime.combine(day, time.min)
+        end_local = start_local + timedelta(days=1)
+        return start_local, end_local
 
     # =========================================================================
     # ORM OVERRIDES (CREATE / WRITE) - Đã tối ưu hóa hàm kiểm tra
@@ -315,10 +410,18 @@ class EntryControlAttendanceLog(models.Model):
     # =========================================================================
     @api.model
     def _find_or_create_system_log(self, source_log, direction, local_dt, reason):
-        """Khởi tạo log hệ thống biên ngày, chủ động TRỪ ĐI 7 GIỜ trước khi đưa vào Odoo ORM."""
-        fixed_orm_dt = local_dt - timedelta(hours=7)
-        check_time_normalized = self._normalize_check_time_value(fixed_orm_dt)
-        
+        """Create 23:59/00:00 boundary logs using the module timezone.
+
+        local_dt is a business-local datetime. It is converted to Odoo's
+        standard UTC-naive Datetime before being searched/created.
+        """
+        tz = self._attendance_zoneinfo()
+        if local_dt.tzinfo is None:
+            local_aware = local_dt.replace(tzinfo=tz)
+        else:
+            local_aware = local_dt.astimezone(tz)
+        check_time_normalized = local_aware.astimezone(timezone.utc).replace(tzinfo=None)
+
         # Đảm bảo chuyển đổi mốc datetime sang chuỗi chuẩn format của Odoo trước khi search biệt lập
         check_time_str = fields.Datetime.to_string(check_time_normalized) if isinstance(check_time_normalized, datetime) else check_time_normalized
 
@@ -356,51 +459,31 @@ class EntryControlAttendanceLog(models.Model):
         return new_log
 
     # =========================================================================
-    # UNIFIED DAILY HR ATTENDANCE SYNC (SỬA LỖI MÚI GIỜ KHI QUÉT)
+    # UNIFIED DAILY HR ATTENDANCE SYNC
     # =========================================================================
     @api.model
     def cron_create_daily_attendances(self):
-        """Cron đồng bộ dữ liệu chấm công ngày hôm qua theo giờ Việt Nam."""
-
-        vn_tz = ZoneInfo("Asia/Ho_Chi_Minh")
+        """Cron đồng bộ dữ liệu chấm công ngày hôm qua theo module timezone."""
 
         Log = self.env["entry.control.attendance.log"].sudo()
         HrAttendance = self.env["hr.attendance"].sudo()
 
-        # Odoo now là UTC-naive
-        now_utc = fields.Datetime.now()
+        tz_name = Log._attendance_timezone_name()
+        now_utc, now_local = Log._module_now()
 
-        # Convert UTC -> giờ Việt Nam
-        now_vn = now_utc.replace(tzinfo=timezone.utc).astimezone(vn_tz)
-
-        today_local = now_vn.date()
+        today_local = now_local.date()
         yesterday_local = today_local - timedelta(days=1)
 
-        # Range ngày hôm qua theo giờ Việt Nam:
-        # 00:00 hôm qua -> 00:00 hôm nay
-        start_local = datetime.combine(
-            yesterday_local,
-            time(0, 0, 0),
-            tzinfo=vn_tz,
-        )
+        start_local, end_local, db_start, db_end = Log._local_day_utc_bounds(yesterday_local)
 
-        end_local = datetime.combine(
-            today_local,
-            time(0, 0, 0),
-            tzinfo=vn_tz,
-        )
-
-        # Convert range Việt Nam sang UTC-naive để query DB Odoo
-        db_start = start_local.astimezone(timezone.utc).replace(tzinfo=None)
-        db_end = end_local.astimezone(timezone.utc).replace(tzinfo=None)
-
-        _logger.info("===== CRON TIME DEBUG =====")
+        _logger.info("===== GATEKEEPER CRON TIME DEBUG =====")
+        _logger.info("Module timezone: %s", tz_name)
         _logger.info("Now UTC: %s", now_utc)
-        _logger.info("Now VN: %s", now_vn)
-        _logger.info("Today VN: %s", today_local)
-        _logger.info("Yesterday VN: %s", yesterday_local)
-        _logger.info("Start local VN: %s", start_local)
-        _logger.info("End local VN: %s", end_local)
+        _logger.info("Now module-local: %s", now_local)
+        _logger.info("Today module-local: %s", today_local)
+        _logger.info("Yesterday module-local: %s", yesterday_local)
+        _logger.info("Start local: %s", start_local)
+        _logger.info("End local: %s", end_local)
         _logger.info("DB UTC range: %s -> %s", db_start, db_end)
 
         attendance_groups = Log.read_group(
@@ -419,13 +502,32 @@ class EntryControlAttendanceLog(models.Model):
             if g.get("employee_id")
         ]
 
+        employee_count = len(employee_ids)
+        log_count = 0
+        created_count = 0
+        updated_count = 0
+        failed_count = 0
+
         _logger.info(
-            "Cron Điểm Danh: Bắt đầu gộp cho %s nhân viên ngày %s",
-            len(employee_ids),
+            "Cron Điểm Danh: Bắt đầu gộp cho %s nhân viên ngày %s timezone %s",
+            employee_count,
             yesterday_local,
+            tz_name,
         )
 
         if not employee_ids:
+            Log._write_daily_cron_metrics(
+                last_at=fields.Datetime.to_string(now_utc),
+                business_date=yesterday_local,
+                timezone=tz_name,
+                db_start=fields.Datetime.to_string(db_start),
+                db_end=fields.Datetime.to_string(db_end),
+                log_count=0,
+                employee_count=0,
+                created_count=0,
+                updated_count=0,
+                failed_count=0,
+            )
             _logger.info(
                 "Cron Điểm Danh: Không có dữ liệu log thuộc ngày %s | DB range %s -> %s",
                 yesterday_local,
@@ -444,24 +546,25 @@ class EntryControlAttendanceLog(models.Model):
             if not emp_logs:
                 continue
 
+            log_count += len(emp_logs)
             last_log = emp_logs[-1]
 
             if last_log.direction == "in":
-                self._find_or_create_system_log(
+                Log._find_or_create_system_log(
                     source_log=last_log,
                     direction="out",
                     local_dt=datetime.combine(yesterday_local, time(23, 59, 59)),
-                    reason=""
+                    reason="23:59 Check Out",
                 )
 
-                self._find_or_create_system_log(
+                Log._find_or_create_system_log(
                     source_log=last_log,
                     direction="in",
                     local_dt=datetime.combine(today_local, time(0, 0, 0)),
-                    reason=""
+                    reason="00:00 Check In",
                 )
 
-                # Reload lại log ngày hôm qua, không lấy log 00:00 hôm nay
+                # Reload lại log ngày hôm qua, không lấy log 00:00 hôm nay vì domain dùng < db_end.
                 emp_logs = Log.search([
                     ("employee_id", "=", emp_id),
                     ("check_time", ">=", db_start),
@@ -507,6 +610,7 @@ class EntryControlAttendanceLog(models.Model):
                 if existing_attendance:
                     existing_attendance.write(vals)
                     attendance_rec = existing_attendance
+                    updated_count += 1
                     _logger.info(
                         "Cron cập nhật hr.attendance ID %s cho NV ID %s",
                         attendance_rec.id,
@@ -514,6 +618,7 @@ class EntryControlAttendanceLog(models.Model):
                     )
                 else:
                     attendance_rec = HrAttendance.create(vals)
+                    created_count += 1
                     _logger.info(
                         "Cron tạo hr.attendance ID %s cho NV ID %s",
                         attendance_rec.id,
@@ -527,6 +632,7 @@ class EntryControlAttendanceLog(models.Model):
                 })
 
             except Exception as e:
+                failed_count += 1
                 error_msg = str(e)
                 _logger.error(
                     "Lỗi tạo/cập nhật hr.attendance cho NV ID %s ngày %s: %s",
@@ -539,9 +645,28 @@ class EntryControlAttendanceLog(models.Model):
                     "error_message": error_msg,
                 })
 
+        Log._write_daily_cron_metrics(
+            last_at=fields.Datetime.to_string(now_utc),
+            business_date=yesterday_local,
+            timezone=tz_name,
+            db_start=fields.Datetime.to_string(db_start),
+            db_end=fields.Datetime.to_string(db_end),
+            log_count=log_count,
+            employee_count=employee_count,
+            created_count=created_count,
+            updated_count=updated_count,
+            failed_count=failed_count,
+        )
+
         _logger.info(
-            "Cron Điểm Danh: Hoàn tất xử lý gộp dữ liệu cho ngày %s",
+            "Cron Điểm Danh: Hoàn tất ngày %s | timezone=%s | employees=%s | logs=%s | created=%s | updated=%s | failed=%s",
             yesterday_local,
+            tz_name,
+            employee_count,
+            log_count,
+            created_count,
+            updated_count,
+            failed_count,
         )
 
         return True
