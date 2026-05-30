@@ -10,7 +10,9 @@
                         <div class="text-muted" colspan="2">This timezone is used by Gatekeeper for Attendance Logs, system-generated 23:59/00:00 boundary logs, Create Attendances, and Cron. It does not depend on the current Odoo user's timezone.</div>
                     </group>
                     <group string="Daily Cron Diagnostics">
-                        <field name="last_cron_at" readonly="1"/>
+                        <div class="text-muted" colspan="2">UTC is the value stored/queried by Odoo. Local uses the selected Module Timezone.</div>
+                        <field name="last_cron_at_utc" readonly="1"/>
+                        <field name="last_cron_at_local" readonly="1"/>
                         <field name="last_cron_date" readonly="1"/>
                         <field name="last_cron_timezone" readonly="1"/>
                         <field name="last_cron_db_start" readonly="1"/>

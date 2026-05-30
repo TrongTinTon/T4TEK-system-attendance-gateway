@@ -1,3 +1,4 @@
+from datetime import timezone
 from functools import lru_cache
 from zoneinfo import ZoneInfo, available_timezones
 
@@ -33,7 +34,8 @@ class EntryControlSettings(models.TransientModel):
         help="Business timezone used by Gatekeeper for Attendance Logs, system-generated 23:59/00:00 logs, Create Attendances, and Cron.",
     )
 
-    last_cron_at = fields.Char(string="Last Cron Run", readonly=True)
+    last_cron_at_utc = fields.Char(string="Last Cron Run UTC", readonly=True)
+    last_cron_at_local = fields.Char(string="Last Cron Run Local", readonly=True)
     last_cron_date = fields.Char(string="Last Business Date", readonly=True)
     last_cron_timezone = fields.Char(string="Last Cron Timezone", readonly=True)
     last_cron_db_start = fields.Char(string="Last DB Start UTC", readonly=True)
@@ -61,7 +63,8 @@ class EntryControlSettings(models.TransientModel):
             res["attendance_timezone"] = self._default_attendance_timezone() or "Asia/Ho_Chi_Minh"
 
         metric_map = {
-            "last_cron_at": Log._CONFIG_CRON_LAST_AT,
+            "last_cron_at_utc": Log._CONFIG_CRON_LAST_AT_UTC,
+            "last_cron_at_local": Log._CONFIG_CRON_LAST_AT_LOCAL,
             "last_cron_date": Log._CONFIG_CRON_LAST_DATE,
             "last_cron_timezone": Log._CONFIG_CRON_LAST_TIMEZONE,
             "last_cron_db_start": Log._CONFIG_CRON_LAST_DB_START,
@@ -75,6 +78,19 @@ class EntryControlSettings(models.TransientModel):
         for field_name, param_name in metric_map.items():
             if field_name in fields_list:
                 res[field_name] = ICP.get_param(param_name, "")
+
+        # Backward-compatible display for databases upgraded from older builds
+        # that only stored `entry_control.last_daily_attendance_cron_at`.
+        legacy_utc = ICP.get_param(Log._CONFIG_CRON_LAST_AT, "")
+        if "last_cron_at_utc" in fields_list and not res.get("last_cron_at_utc"):
+            res["last_cron_at_utc"] = legacy_utc
+        if "last_cron_at_local" in fields_list and not res.get("last_cron_at_local") and legacy_utc:
+            try:
+                utc_dt = fields.Datetime.from_string(legacy_utc).replace(tzinfo=timezone.utc)
+                local_dt = utc_dt.astimezone(Log._attendance_zoneinfo())
+                res["last_cron_at_local"] = Log._format_module_local_datetime(local_dt)
+            except Exception:
+                res["last_cron_at_local"] = ""
         return res
 
     def _validate_timezone(self, tz_name):

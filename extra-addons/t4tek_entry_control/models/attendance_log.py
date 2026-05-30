@@ -16,7 +16,10 @@ class EntryControlAttendanceLog(models.Model):
     _DEFAULT_ATTENDANCE_TIMEZONE = "Asia/Ho_Chi_Minh"
     _CONFIG_ATTENDANCE_TIMEZONE = "entry_control.attendance_timezone"
 
+    # Legacy key kept for backward compatibility with older module versions.
     _CONFIG_CRON_LAST_AT = "entry_control.last_daily_attendance_cron_at"
+    _CONFIG_CRON_LAST_AT_UTC = "entry_control.last_daily_attendance_cron_at_utc"
+    _CONFIG_CRON_LAST_AT_LOCAL = "entry_control.last_daily_attendance_cron_at_local"
     _CONFIG_CRON_LAST_DATE = "entry_control.last_daily_attendance_cron_date"
     _CONFIG_CRON_LAST_TIMEZONE = "entry_control.last_daily_attendance_cron_timezone"
     _CONFIG_CRON_LAST_DB_START = "entry_control.last_daily_attendance_cron_db_start"
@@ -76,6 +79,32 @@ class EntryControlAttendanceLog(models.Model):
         return start_local, end_local, db_start, db_end
 
     @api.model
+    def _format_timezone_offset(self, dt):
+        """Return a readable UTC offset for an aware datetime."""
+        if not dt or not dt.utcoffset():
+            return "UTC+00:00"
+        total_seconds = int(dt.utcoffset().total_seconds())
+        sign = "+" if total_seconds >= 0 else "-"
+        total_seconds = abs(total_seconds)
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes = remainder // 60
+        return "UTC%s%02d:%02d" % (sign, hours, minutes)
+
+    @api.model
+    def _format_module_local_datetime(self, dt):
+        """Format an aware module-local datetime for Settings diagnostics."""
+        if not dt:
+            return ""
+        tz_name = self._attendance_timezone_name()
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc).astimezone(self._attendance_zoneinfo())
+        return "%s (%s, %s)" % (
+            dt.strftime("%Y-%m-%d %H:%M:%S"),
+            tz_name,
+            self._format_timezone_offset(dt),
+        )
+
+    @api.model
     def _write_daily_cron_metrics(self, **metrics):
         """Persist last cron diagnostics in ir.config_parameter.
 
@@ -84,8 +113,13 @@ class EntryControlAttendanceLog(models.Model):
         """
         try:
             ICP = self.env["ir.config_parameter"].sudo()
+            last_at_utc = metrics.get("last_at_utc") or metrics.get("last_at")
+            last_at_local = metrics.get("last_at_local")
             mapping = {
-                self._CONFIG_CRON_LAST_AT: metrics.get("last_at"),
+                # Keep writing the legacy key so older settings screens do not break during upgrades.
+                self._CONFIG_CRON_LAST_AT: last_at_utc,
+                self._CONFIG_CRON_LAST_AT_UTC: last_at_utc,
+                self._CONFIG_CRON_LAST_AT_LOCAL: last_at_local,
                 self._CONFIG_CRON_LAST_DATE: metrics.get("business_date"),
                 self._CONFIG_CRON_LAST_TIMEZONE: metrics.get("timezone"),
                 self._CONFIG_CRON_LAST_DB_START: metrics.get("db_start"),
@@ -517,7 +551,8 @@ class EntryControlAttendanceLog(models.Model):
 
         if not employee_ids:
             Log._write_daily_cron_metrics(
-                last_at=fields.Datetime.to_string(now_utc),
+                last_at_utc=fields.Datetime.to_string(now_utc),
+                last_at_local=Log._format_module_local_datetime(now_local),
                 business_date=yesterday_local,
                 timezone=tz_name,
                 db_start=fields.Datetime.to_string(db_start),
@@ -646,7 +681,8 @@ class EntryControlAttendanceLog(models.Model):
                 })
 
         Log._write_daily_cron_metrics(
-            last_at=fields.Datetime.to_string(now_utc),
+            last_at_utc=fields.Datetime.to_string(now_utc),
+            last_at_local=Log._format_module_local_datetime(now_local),
             business_date=yesterday_local,
             timezone=tz_name,
             db_start=fields.Datetime.to_string(db_start),
