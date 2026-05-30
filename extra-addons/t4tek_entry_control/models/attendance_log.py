@@ -1,4 +1,5 @@
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
 import logging
 import re
 from dateutil import parser as date_parser
@@ -359,54 +360,92 @@ class EntryControlAttendanceLog(models.Model):
     # =========================================================================
     @api.model
     def cron_create_daily_attendances(self):
-        """HÀM CRON CẢI TIẾN: Đồng bộ 1 ngày = 1 dòng duy nhất.
-        Đã sửa lỗi tịnh tiến lùi khoảng quét 7 tiếng để ôm trọn vẹn dữ liệu lưu trong DB.
-        """
-        today_local = fields.Date.context_today(self)
+        """Cron đồng bộ dữ liệu chấm công ngày hôm qua theo giờ Việt Nam."""
+
+        vn_tz = ZoneInfo("Asia/Ho_Chi_Minh")
+
+        Log = self.env["entry.control.attendance.log"].sudo()
+        HrAttendance = self.env["hr.attendance"].sudo()
+
+        # Odoo now là UTC-naive
+        now_utc = fields.Datetime.now()
+
+        # Convert UTC -> giờ Việt Nam
+        now_vn = now_utc.replace(tzinfo=timezone.utc).astimezone(vn_tz)
+
+        today_local = now_vn.date()
         yesterday_local = today_local - timedelta(days=1)
-        
-        # Mốc giờ Local chuẩn (00:00:00 -> 23:59:59)
-        start_yesterday, end_yesterday = self._business_day_bounds_local(yesterday_local)
 
-        # -------------------------------------------------------------------------
-        # ĐỒNG BỘ MÚI GIỜ: Tịnh tiến lùi khoảng tìm kiếm đi 7 tiếng để tìm đúng
-        # dữ liệu thô thực tế mà API đang lưu trong database.
-        # -------------------------------------------------------------------------
-        db_start = start_yesterday - timedelta(hours=7)
-        db_end = end_yesterday - timedelta(hours=7)
+        # Range ngày hôm qua theo giờ Việt Nam:
+        # 00:00 hôm qua -> 00:00 hôm nay
+        start_local = datetime.combine(
+            yesterday_local,
+            time(0, 0, 0),
+            tzinfo=vn_tz,
+        )
 
-        # 1. TRUY VẤN DATABASE THEO KHOẢNG GIỜ ĐÃ DỊCH CHUYỂN
-        attendance_groups = self.env["entry.control.attendance.log"].sudo().read_group(
+        end_local = datetime.combine(
+            today_local,
+            time(0, 0, 0),
+            tzinfo=vn_tz,
+        )
+
+        # Convert range Việt Nam sang UTC-naive để query DB Odoo
+        db_start = start_local.astimezone(timezone.utc).replace(tzinfo=None)
+        db_end = end_local.astimezone(timezone.utc).replace(tzinfo=None)
+
+        _logger.info("===== CRON TIME DEBUG =====")
+        _logger.info("Now UTC: %s", now_utc)
+        _logger.info("Now VN: %s", now_vn)
+        _logger.info("Today VN: %s", today_local)
+        _logger.info("Yesterday VN: %s", yesterday_local)
+        _logger.info("Start local VN: %s", start_local)
+        _logger.info("End local VN: %s", end_local)
+        _logger.info("DB UTC range: %s -> %s", db_start, db_end)
+
+        attendance_groups = Log.read_group(
             domain=[
                 ("check_time", ">=", db_start),
-                ("check_time", "<=", db_end),
+                ("check_time", "<", db_end),
                 ("employee_id", "!=", False),
             ],
             fields=["employee_id"],
             groupby=["employee_id"],
         )
 
-        employee_ids = [g["employee_id"][0] for g in attendance_groups if g["employee_id"]]
+        employee_ids = [
+            g["employee_id"][0]
+            for g in attendance_groups
+            if g.get("employee_id")
+        ]
+
+        _logger.info(
+            "Cron Điểm Danh: Bắt đầu gộp cho %s nhân viên ngày %s",
+            len(employee_ids),
+            yesterday_local,
+        )
+
         if not employee_ids:
-            _logger.info("Cron Điểm Danh: Không có dữ liệu log nào thuộc ngày %s (Mốc DB: %s -> %s)", yesterday_local, db_start, db_end)
+            _logger.info(
+                "Cron Điểm Danh: Không có dữ liệu log thuộc ngày %s | DB range %s -> %s",
+                yesterday_local,
+                db_start,
+                db_end,
+            )
             return True
 
-        HrAttendance = self.env["hr.attendance"].sudo()
-        _logger.info("Cron Điểm Danh: Bắt đầu gộp cho %s nhân viên ngày %s", len(employee_ids), yesterday_local)
-
-        # 2. DUYỆT QUA TỪNG NHÂN VIÊN
         for emp_id in employee_ids:
-            emp_logs = self.sudo().search([
+            emp_logs = Log.search([
                 ("employee_id", "=", emp_id),
                 ("check_time", ">=", db_start),
-                ("check_time", "<=", db_end),
+                ("check_time", "<", db_end),
             ], order="check_time asc, id asc")
 
             if not emp_logs:
                 continue
 
-            # 2.2. XỬ LÝ BIÊN NGÀY CA ĐÊM
             last_log = emp_logs[-1]
+
             if last_log.direction == "in":
                 self._find_or_create_system_log(
                     source_log=last_log,
@@ -414,50 +453,95 @@ class EntryControlAttendanceLog(models.Model):
                     local_dt=datetime.combine(yesterday_local, time(23, 59, 59)),
                     reason=""
                 )
+
                 self._find_or_create_system_log(
                     source_log=last_log,
                     direction="in",
                     local_dt=datetime.combine(today_local, time(0, 0, 0)),
                     reason=""
                 )
-                # Tải lại danh sách log sau khi hệ thống đã bù bản ghi biên ngày
-                emp_logs = self.sudo().search([
+
+                # Reload lại log ngày hôm qua, không lấy log 00:00 hôm nay
+                emp_logs = Log.search([
                     ("employee_id", "=", emp_id),
                     ("check_time", ">=", db_start),
-                    ("check_time", "<=", db_end),
+                    ("check_time", "<", db_end),
                 ], order="check_time asc, id asc")
 
-            # 2.3. CHIẾN LƯỢC GỘP TOÀN DIỆN
             in_logs = emp_logs.filtered(lambda l: l.direction == "in")
             out_logs = emp_logs.filtered(lambda l: l.direction == "out")
 
-            if in_logs and out_logs:
-                first_in_log = in_logs[0]
-                last_out_log = out_logs[-1]
+            if not in_logs or not out_logs:
+                _logger.warning(
+                    "Cron bỏ qua NV ID %s ngày %s vì thiếu IN hoặc OUT log",
+                    emp_id,
+                    yesterday_local,
+                )
+                continue
 
-                if last_out_log.check_time > first_in_log.check_time:
-                    existing_attendance = HrAttendance.search([
-                        ("employee_id", "=", emp_id),
-                        ("check_in", "=", first_in_log.check_time),
-                        ("check_out", "=", last_out_log.check_time),
-                    ], limit=1)
+            first_in_log = in_logs[0]
+            last_out_log = out_logs[-1]
 
-                    if not existing_attendance:
-                        try:
-                            attendance_rec = HrAttendance.create({
-                                "employee_id": emp_id,
-                                "check_in": first_in_log.check_time,
-                                "check_out": last_out_log.check_time,
-                            })
-                            emp_logs.write({
-                                "hr_attendance_id": attendance_rec.id,
-                                "sync_status": "success",
-                                "error_message": False
-                              })
-                        except Exception as e:
-                            error_msg = str(e)
-                            _logger.error("Lỗi tạo hr.attendance gộp cho NV ID %s: %s", emp_id, error_msg)
-                            emp_logs.write({"sync_status": "failed", "error_message": error_msg})
+            if last_out_log.check_time <= first_in_log.check_time:
+                _logger.warning(
+                    "Cron bỏ qua NV ID %s vì check_out <= check_in | IN=%s | OUT=%s",
+                    emp_id,
+                    first_in_log.check_time,
+                    last_out_log.check_time,
+                )
+                continue
 
-        _logger.info("Cron Điểm Danh: Hoàn tất xử lý gộp dữ liệu cho ngày %s", yesterday_local)
+            existing_attendance = HrAttendance.search([
+                ("employee_id", "=", emp_id),
+                ("check_in", ">=", db_start),
+                ("check_in", "<", db_end),
+            ], limit=1)
+
+            vals = {
+                "employee_id": emp_id,
+                "check_in": first_in_log.check_time,
+                "check_out": last_out_log.check_time,
+            }
+
+            try:
+                if existing_attendance:
+                    existing_attendance.write(vals)
+                    attendance_rec = existing_attendance
+                    _logger.info(
+                        "Cron cập nhật hr.attendance ID %s cho NV ID %s",
+                        attendance_rec.id,
+                        emp_id,
+                    )
+                else:
+                    attendance_rec = HrAttendance.create(vals)
+                    _logger.info(
+                        "Cron tạo hr.attendance ID %s cho NV ID %s",
+                        attendance_rec.id,
+                        emp_id,
+                    )
+
+                emp_logs.write({
+                    "hr_attendance_id": attendance_rec.id,
+                    "sync_status": "success",
+                    "error_message": False,
+                })
+
+            except Exception as e:
+                error_msg = str(e)
+                _logger.error(
+                    "Lỗi tạo/cập nhật hr.attendance cho NV ID %s ngày %s: %s",
+                    emp_id,
+                    yesterday_local,
+                    error_msg,
+                )
+                emp_logs.write({
+                    "sync_status": "failed",
+                    "error_message": error_msg,
+                })
+
+        _logger.info(
+            "Cron Điểm Danh: Hoàn tất xử lý gộp dữ liệu cho ngày %s",
+            yesterday_local,
+        )
+
         return True
