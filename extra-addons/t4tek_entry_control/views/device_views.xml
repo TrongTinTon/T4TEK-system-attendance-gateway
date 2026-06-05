@@ -3,24 +3,24 @@
         <field name="name">entry.control.device.list</field>
         <field name="model">entry.control.device</field>
         <field name="arch" type="xml">
-            <list string="Devices">
+            <list string="Devices" decoration-success="status == 'online'" decoration-danger="status == 'offline'" decoration-muted="status == 'deactive'">
+                <field name="status" widget="badge" decoration-success="status == 'online'" decoration-danger="status == 'offline'" decoration-muted="status == 'deactive'"/>
                 <field name="serial_number"/>
                 <field name="controller_id"/>
-                <field name="attendance_timezone"/>
-                <field name="attendance_timezone_offset"/>
                 <field name="name"/>
-                <field name="model"/>
-                <field name="firmware_version"/>
                 <field name="ip_address"/>
-                <field name="port"/>
-                <field name="machine_no"/>
-                <field name="comm_mode"/>
-                <field name="status" widget="badge"/>
                 <field name="last_online_at"/>
                 <field name="last_offline_at"/>
-                <field name="last_status_changed_at"/>
-                <field name="last_reported_at"/>
-                <field name="active"/>
+                <field name="attendance_timezone" optional="hide"/>
+                <field name="attendance_timezone_offset" optional="hide"/>
+                <field name="model" optional="hide"/>
+                <field name="firmware_version" optional="hide"/>
+                <field name="port" optional="hide"/>
+                <field name="machine_no" optional="hide"/>
+                <field name="comm_mode" optional="hide"/>
+                <field name="last_status_changed_at" optional="hide"/>
+                <field name="last_reported_at" optional="hide"/>
+                <field name="active" optional="hide"/>
             </list>
         </field>
     </record>
