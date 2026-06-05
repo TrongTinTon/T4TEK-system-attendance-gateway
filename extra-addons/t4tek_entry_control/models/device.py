@@ -29,7 +29,15 @@ class EntryControlDevice(models.Model):
         ("deactive", "Deactive"),
     ], default="offline", index=True)
     active = fields.Boolean(default=True, index=True)
+    # Actual device times reported by the local Controller.
+    # last_seen_at / last_online_at are updated only when the device is detected online.
+    # last_offline_at is the first detection time of the current offline period, not every report time.
     last_seen_at = fields.Datetime(readonly=True)
+    last_online_at = fields.Datetime(readonly=True)
+    last_offline_at = fields.Datetime(readonly=True)
+    last_status_changed_at = fields.Datetime(readonly=True)
+    # Server-side audit: when Odoo received the latest device report payload.
+    last_reported_at = fields.Datetime(readonly=True)
 
     _sql_constraints = [
         ("serial_number_unique", "unique(serial_number)", "Serial Number must be unique."),
@@ -53,6 +61,35 @@ class EntryControlDevice(models.Model):
             or ""
         ).strip()
 
+
+    @api.model
+    def _datetime_from_payload(self, payload, *keys):
+        payload = dict(payload or {})
+        for key in keys:
+            value = payload.get(key)
+            if not value:
+                continue
+            try:
+                if isinstance(value, str):
+                    text = value.strip()
+                    if not text:
+                        continue
+                    # Controller sends UTC-naive server datetime: yyyy-MM-dd HH:mm:ss.
+                    # Be tolerant of ISO-like strings with T/Z/offset.
+                    text = text.replace("T", " ")
+                    if text.endswith("Z"):
+                        text = text[:-1]
+                    # Strip a trailing timezone offset if present. Controller already normalized to UTC.
+                    if len(text) > 19 and (text[19:20] in ("+", "-")):
+                        text = text[:19]
+                    if len(text) >= 19:
+                        text = text[:19]
+                    return fields.Datetime.to_datetime(text)
+                return fields.Datetime.to_datetime(value)
+            except Exception:
+                continue
+        return False
+
     @api.model
     def upsert_from_payload(self, controller, payload):
         payload = dict(payload or {})
@@ -61,6 +98,21 @@ class EntryControlDevice(models.Model):
             return self.browse()
         connection_status = str(payload.get("connection_status") or payload.get("status") or "offline").strip().lower()
         active_status = str(payload.get("active_status") or "active").strip().lower()
+        status = "deactive" if active_status == "deactive" else ("online" if connection_status == "online" else "offline")
+
+        # Serial Number is the canonical device identity. If a physical device is
+        # moved to another Controller, reassign it instead of creating a duplicate.
+        device = self.sudo().search([("serial_number", "=", serial)], limit=1)
+        if not device:
+            # Tolerant fallback for old databases that may still contain duplicate
+            # rows before the unique constraint is cleaned up.
+            device = self.sudo().search([("controller_id", "=", controller.id), ("serial_number", "=", serial)], limit=1)
+
+        received_at = fields.Datetime.now()
+        payload_online_at = self._datetime_from_payload(payload, "last_online_at", "last_seen_at")
+        payload_offline_at = self._datetime_from_payload(payload, "last_offline_at")
+        payload_status_changed_at = self._datetime_from_payload(payload, "last_status_changed_at")
+
         vals = {
             "controller_id": controller.id,
             "serial_number": serial,
@@ -73,17 +125,31 @@ class EntryControlDevice(models.Model):
             "port": int(payload.get("port") or 4370),
             "machine_no": int(payload.get("machine_no") or payload.get("machineNo") or 1),
             "comm_mode": payload.get("comm_mode") if payload.get("comm_mode") in ("tcp", "pull", "usb", "unknown") else "tcp",
-            "status": "deactive" if active_status == "deactive" else ("online" if connection_status == "online" else "offline"),
+            "status": status,
             "active": active_status != "deactive",
-            "last_seen_at": fields.Datetime.now(),
+            "last_reported_at": received_at,
         }
-        # Serial Number is the canonical device identity. If a physical device is
-        # moved to another Controller, reassign it instead of creating a duplicate.
-        device = self.sudo().search([("serial_number", "=", serial)], limit=1)
-        if not device:
-            # Tolerant fallback for old databases that may still contain duplicate
-            # rows before the unique constraint is cleaned up.
-            device = self.sudo().search([("controller_id", "=", controller.id), ("serial_number", "=", serial)], limit=1)
+
+        # Do not use report receive time as actual last_seen/offline time.
+        # Actual times come from the Controller status probe history.
+        if status == "online":
+            online_at = payload_online_at or received_at
+            vals.update({
+                "last_seen_at": online_at,
+                "last_online_at": online_at,
+            })
+        elif status == "offline":
+            if payload_offline_at:
+                vals["last_offline_at"] = payload_offline_at
+            elif not device or device.status != "offline" or not device.last_offline_at:
+                vals["last_offline_at"] = received_at
+
+        previous_status = device.status if device else False
+        if payload_status_changed_at:
+            vals["last_status_changed_at"] = payload_status_changed_at
+        elif not device or previous_status != status:
+            vals["last_status_changed_at"] = received_at
+
         if device:
             device.write(vals)
         else:
