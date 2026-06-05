@@ -28,10 +28,15 @@ class EntryControlSettings(models.TransientModel):
 
     attendance_timezone = fields.Selection(
         _tz_get,
-        string="Module Timezone",
+        string="Default Timezone",
         required=True,
         default="Asia/Ho_Chi_Minh",
-        help="Business timezone used by Gatekeeper for Attendance Logs, system-generated 23:59/00:00 logs, Create Attendances, and Cron.",
+        help="Fallback timezone used for new Controllers and legacy records without Controller. Normal attendance processing uses each Controller Timezone.",
+    )
+    daily_cron_local_run_time = fields.Char(
+        string="Daily Local Processing Time",
+        default="00:00",
+        help="Local time in each Controller Timezone when the periodic UTC cron is allowed to process the previous business day. Format: HH:MM, for example 00:00 or 00:15.",
     )
 
     last_cron_at_utc = fields.Char(string="Last Cron Run UTC", readonly=True)
@@ -61,6 +66,8 @@ class EntryControlSettings(models.TransientModel):
         ICP = self.env["ir.config_parameter"].sudo()
         if "attendance_timezone" in fields_list:
             res["attendance_timezone"] = self._default_attendance_timezone() or "Asia/Ho_Chi_Minh"
+        if "daily_cron_local_run_time" in fields_list:
+            res["daily_cron_local_run_time"] = ICP.get_param(Log._CONFIG_CRON_LOCAL_RUN_TIME, Log._DEFAULT_CRON_LOCAL_RUN_TIME)
 
         metric_map = {
             "last_cron_at_utc": Log._CONFIG_CRON_LAST_AT_UTC,
@@ -96,12 +103,23 @@ class EntryControlSettings(models.TransientModel):
     def _validate_timezone(self, tz_name):
         tz_name = str(tz_name or "").strip()
         if not tz_name:
-            raise UserError(_("Module Timezone is required."))
+            raise UserError(_("Default Timezone is required."))
         try:
             ZoneInfo(tz_name)
         except Exception:
             raise UserError(_("Invalid timezone '%s'. Please use an IANA timezone name, for example Asia/Ho_Chi_Minh.") % tz_name)
         return tz_name
+
+    def _validate_local_run_time(self, value):
+        text = str(value or "00:00").strip()
+        parts = text.split(":")
+        if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
+            raise UserError(_("Daily Local Processing Time must use HH:MM format, for example 00:00 or 00:15."))
+        hour = int(parts[0])
+        minute = int(parts[1])
+        if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+            raise UserError(_("Daily Local Processing Time must be between 00:00 and 23:59."))
+        return "%02d:%02d" % (hour, minute)
 
     def _check_gatekeeper_admin(self):
         if not (self.env.user.has_group("t4tek_entry_control.group_entry_control_admin") or self.env.user.has_group("base.group_system")):
@@ -111,14 +129,17 @@ class EntryControlSettings(models.TransientModel):
         self.ensure_one()
         self._check_gatekeeper_admin()
         tz_name = self._validate_timezone(self.attendance_timezone)
+        run_time = self._validate_local_run_time(self.daily_cron_local_run_time)
         Log = self._log_model()
-        self.env["ir.config_parameter"].sudo().set_param(Log._CONFIG_ATTENDANCE_TIMEZONE, tz_name)
+        ICP = self.env["ir.config_parameter"].sudo()
+        ICP.set_param(Log._CONFIG_ATTENDANCE_TIMEZONE, tz_name)
+        ICP.set_param(Log._CONFIG_CRON_LOCAL_RUN_TIME, run_time)
         return {
             "type": "ir.actions.client",
             "tag": "display_notification",
             "params": {
                 "title": _("Gatekeeper Settings"),
-                "message": _("Module timezone saved: %s") % tz_name,
+                "message": _("Default timezone saved: %s. Daily local processing time: %s") % (tz_name, run_time),
                 "type": "success",
                 "sticky": False,
                 "next": {"type": "ir.actions.act_window_close"},
@@ -130,14 +151,18 @@ class EntryControlSettings(models.TransientModel):
         self._check_gatekeeper_admin()
         Log = self._log_model()
         tz_name = Log._DEFAULT_ATTENDANCE_TIMEZONE
-        self.env["ir.config_parameter"].sudo().set_param(Log._CONFIG_ATTENDANCE_TIMEZONE, tz_name)
+        run_time = Log._DEFAULT_CRON_LOCAL_RUN_TIME
+        ICP = self.env["ir.config_parameter"].sudo()
+        ICP.set_param(Log._CONFIG_ATTENDANCE_TIMEZONE, tz_name)
+        ICP.set_param(Log._CONFIG_CRON_LOCAL_RUN_TIME, run_time)
         self.attendance_timezone = tz_name
+        self.daily_cron_local_run_time = run_time
         return {
             "type": "ir.actions.client",
             "tag": "display_notification",
             "params": {
                 "title": _("Gatekeeper Settings"),
-                "message": _("Module timezone reset to default: %s") % tz_name,
+                "message": _("Default timezone reset to default: %s. Daily local processing time reset to %s") % (tz_name, run_time),
                 "type": "success",
                 "sticky": False,
             },

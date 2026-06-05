@@ -65,6 +65,23 @@ class EntryControlAPI(http.Controller):
         return controller, None
 
 
+    def _controller_timezone_payload(self, controller):
+        if not controller:
+            return {}
+        try:
+            tz_name = controller._effective_attendance_timezone()
+            offset = controller._timezone_offset_text()
+        except Exception:
+            tz_name = "Asia/Ho_Chi_Minh"
+            offset = "+07:00"
+        return {
+            "controller_timezone": tz_name,
+            "attendance_timezone": tz_name,
+            "device_timezone": offset,
+            "device_timezone_offset": offset,
+            "controller_timezone_offset": offset,
+        }
+
     def _safe_datetime_value(self, value):
         """Normalize any Controller datetime into Odoo UTC-naive storage.
 
@@ -236,12 +253,13 @@ class EntryControlAPI(http.Controller):
 
     @http.route("/api/entry_control/v1/health", type="http", auth="none", methods=["GET", "POST"], csrf=False)
     def health(self, **kwargs):
-        attendance_timezone = request.env["entry.control.attendance.log"].sudo()._attendance_timezone_name()
+        default_timezone = request.env["entry.control.attendance.log"].sudo()._attendance_timezone_name()
         return self._json_response({
             "ok": True,
             "service": "t4tek_entry_control",
             "status": "running",
-            "attendance_timezone": attendance_timezone,
+            "default_attendance_timezone": default_timezone,
+            "note": "Controller-specific timezone is returned after /auth/token or /hello.",
             "server_time": fields.Datetime.to_string(fields.Datetime.now()),
         })
 
@@ -272,6 +290,7 @@ class EntryControlAPI(http.Controller):
             "registration_status": controller.status,
             "approved": True,
             "message": "Authenticated",
+            **self._controller_timezone_payload(controller),
         })
 
     @http.route("/api/entry_control/v1/auth/refresh", type="http", auth="none", methods=["POST"], csrf=False)
@@ -295,6 +314,7 @@ class EntryControlAPI(http.Controller):
                 "expires_at": fields.Datetime.to_string(controller.token_expires_at),
                 "refresh_expires_at": fields.Datetime.to_string(controller.refresh_token_expires_at),
                 "token_hint": controller.token_hint,
+                **self._controller_timezone_payload(controller),
             })
         return self._json_response({"ok": False, "error": "Invalid refresh_token"}, 401)
 
@@ -305,7 +325,9 @@ class EntryControlAPI(http.Controller):
         if error:
             return error
         controller.write({"last_heartbeat_at": fields.Datetime.now(), "last_sync_at": fields.Datetime.now(), "status": "online"})
-        return self._json_response({"ok": True, "controller_uid": controller.controller_uid, "status": controller.status, "approved": True, "message": "Hello OK"})
+        payload = {"ok": True, "controller_uid": controller.controller_uid, "status": controller.status, "approved": True, "message": "Hello OK"}
+        payload.update(self._controller_timezone_payload(controller))
+        return self._json_response(payload)
 
     def _safe_positive_int(self, value, default=1):
         try:

@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timedelta
+from datetime import date, timedelta
 from calendar import monthrange
 
 from odoo import api, fields, models, _
@@ -33,35 +33,10 @@ class EntryControlCreateAttendanceWizard(models.TransientModel):
         last_day = monthrange(year, month)[1]
 
         LogModel = self.env["entry.control.attendance.log"].sudo()
-        HrAttendance = self.env["hr.attendance"].sudo()
+        controllers = LogModel._attendance_controllers_to_process()
 
         start_date = date(year, month, 1)
         month_end_date = date(year, month, last_day)
-
-        # Manual creation follows the same business-day rule as the daily cron:
-        # only completed module-local days are processed. This prevents the button
-        # from creating a 23:59 system Check Out for the current open day.
-        _now_utc, now_local = LogModel._module_now()
-        module_today = now_local.date()
-        last_completed_date = module_today - timedelta(days=1)
-        end_date = min(month_end_date, last_completed_date)
-
-        if end_date < start_date:
-            return {
-                "type": "ir.actions.client",
-                "tag": "display_notification",
-                "params": {
-                    "title": _("Create Attendances"),
-                    "message": _("No completed business days to process for %s/%s in module timezone %s.") % (
-                        month,
-                        year,
-                        LogModel._attendance_timezone_name(),
-                    ),
-                    "type": "warning",
-                    "sticky": False,
-                    "next": {"type": "ir.actions.act_window_close"},
-                },
-            }
 
         total_logs_processed = 0
         created_count = 0
@@ -69,104 +44,51 @@ class EntryControlCreateAttendanceWizard(models.TransientModel):
         failed_count = 0
         skipped_count = 0
         processed_days = 0
+        processed_controllers = 0
+        timezone_summary = []
 
-        # DUYỆT TỪNG NGÀY ĐÃ HOÀN TẤT TRONG THÁNG THEO MODULE TIMEZONE
-        current_date = start_date
-        while current_date <= end_date:
-            processed_days += 1
-            _local_start, _local_end, db_start, db_end = LogModel._local_day_utc_bounds(current_date)
-            next_date = current_date + timedelta(days=1)
+        if not controllers:
+            controllers = self.env["entry.control.controller"].sudo().browse()
 
-            attendance_groups = LogModel.read_group(
-                domain=[
-                    ("check_time", ">=", db_start),
-                    ("check_time", "<", db_end),
-                    ("employee_id", "!=", False),
-                ],
-                fields=["employee_id"],
-                groupby=["employee_id"],
-            )
+        # Process each Controller independently because every Controller may have
+        # a different business timezone and therefore a different completed day.
+        for controller in controllers:
+            _now_utc, now_local = LogModel._controller_now(controller)
+            controller_today = now_local.date()
+            last_completed_date = controller_today - timedelta(days=1)
+            end_date = min(month_end_date, last_completed_date)
+            if end_date < start_date:
+                continue
 
-            employee_ids = [g["employee_id"][0] for g in attendance_groups if g.get("employee_id")]
+            processed_controllers += 1
+            timezone_summary.append("%s=%s" % (controller.display_name, LogModel._attendance_timezone_name(controller)))
+            current_date = start_date
+            while current_date <= end_date:
+                metrics = LogModel._create_attendances_for_controller_day(controller, current_date)
+                processed_days += 1
+                total_logs_processed += int(metrics.get("log_count") or 0)
+                created_count += int(metrics.get("created_count") or 0)
+                updated_count += int(metrics.get("updated_count") or 0)
+                failed_count += int(metrics.get("failed_count") or 0)
+                skipped_count += int(metrics.get("skipped_count") or 0)
+                current_date = current_date + timedelta(days=1)
 
-            for emp_id in employee_ids:
-                emp_logs = LogModel.search([
-                    ("employee_id", "=", emp_id),
-                    ("check_time", ">=", db_start),
-                    ("check_time", "<", db_end),
-                ], order="check_time asc, id asc")
+        if processed_days == 0:
+            return {
+                "type": "ir.actions.client",
+                "tag": "display_notification",
+                "params": {
+                    "title": _("Create Attendances"),
+                    "message": _("No completed business days to process for %s/%s by Controller Timezone.") % (month, year),
+                    "type": "warning",
+                    "sticky": False,
+                    "next": {"type": "ir.actions.act_window_close"},
+                },
+            }
 
-                if not emp_logs:
-                    skipped_count += 1
-                    continue
-
-                total_logs_processed += len(emp_logs)
-
-                last_log = emp_logs[-1]
-                if last_log.direction == "in":
-                    LogModel._find_or_create_system_log(
-                        source_log=last_log,
-                        direction="out",
-                        local_dt=datetime.combine(current_date, time(23, 59, 59)),
-                        reason="",
-                    )
-                    LogModel._find_or_create_system_log(
-                        source_log=last_log,
-                        direction="in",
-                        local_dt=datetime.combine(next_date, time(0, 0, 0)),
-                        reason="",
-                    )
-                    emp_logs = LogModel.search([
-                        ("employee_id", "=", emp_id),
-                        ("check_time", ">=", db_start),
-                        ("check_time", "<", db_end),
-                    ], order="check_time asc, id asc")
-
-                in_logs = emp_logs.filtered(lambda l: l.direction == "in")
-                out_logs = emp_logs.filtered(lambda l: l.direction == "out")
-
-                if not in_logs or not out_logs:
-                    skipped_count += 1
-                    continue
-
-                first_in_log = in_logs[0]
-                last_out_log = out_logs[-1]
-
-                if last_out_log.check_time <= first_in_log.check_time:
-                    skipped_count += 1
-                    continue
-
-                existing_attendance = HrAttendance.search([
-                    ("employee_id", "=", emp_id),
-                    ("check_in", ">=", db_start),
-                    ("check_in", "<", db_end),
-                ], limit=1)
-
-                vals = {
-                    "employee_id": emp_id,
-                    "check_in": first_in_log.check_time,
-                    "check_out": last_out_log.check_time,
-                }
-
-                try:
-                    if existing_attendance:
-                        existing_attendance.write(vals)
-                        attendance_rec = existing_attendance
-                        updated_count += 1
-                    else:
-                        attendance_rec = HrAttendance.create(vals)
-                        created_count += 1
-
-                    emp_logs.write({
-                        "hr_attendance_id": attendance_rec.id,
-                        "sync_status": "success",
-                        "error_message": False,
-                    })
-                except Exception as e:
-                    failed_count += 1
-                    emp_logs.write({"sync_status": "failed", "error_message": str(e)})
-
-            current_date = next_date
+        tz_text = "; ".join(timezone_summary[:8])
+        if len(timezone_summary) > 8:
+            tz_text += "; ... +%s more" % (len(timezone_summary) - 8)
 
         return {
             "type": "ir.actions.client",
@@ -174,12 +96,13 @@ class EntryControlCreateAttendanceWizard(models.TransientModel):
             "params": {
                 "title": _("Create Attendances"),
                 "message": _(
-                    "Processed %s completed day(s) for %s/%s in timezone %s. Logs: %s. Created: %s. Updated: %s. Skipped: %s. Failed: %s."
+                    "Processed %s completed controller-day(s) for %s/%s. Controllers: %s. Timezones: %s. Logs: %s. Created: %s. Updated: %s. Skipped: %s. Failed: %s."
                 ) % (
                     processed_days,
                     month,
                     year,
-                    LogModel._attendance_timezone_name(),
+                    processed_controllers,
+                    tz_text,
                     total_logs_processed,
                     created_count,
                     updated_count,

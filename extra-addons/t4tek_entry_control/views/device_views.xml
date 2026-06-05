@@ -6,6 +6,8 @@
             <list string="Devices">
                 <field name="serial_number"/>
                 <field name="controller_id"/>
+                <field name="attendance_timezone"/>
+                <field name="attendance_timezone_offset"/>
                 <field name="name"/>
                 <field name="model"/>
                 <field name="firmware_version"/>
@@ -29,6 +31,8 @@
                         <group>
                             <field name="serial_number"/>
                             <field name="controller_id"/>
+                            <field name="attendance_timezone" readonly="1"/>
+                            <field name="attendance_timezone_offset" readonly="1"/>
                             <field name="name"/>
                             <field name="model"/>
                             <field name="firmware_version"/>

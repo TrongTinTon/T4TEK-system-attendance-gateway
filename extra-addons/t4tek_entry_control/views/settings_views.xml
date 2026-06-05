@@ -5,12 +5,16 @@
         <field name="arch" type="xml">
             <form string="Gatekeeper Settings">
                 <sheet>
-                    <group string="Timezone">
+                    <group string="Default Timezone">
                         <field name="attendance_timezone" placeholder="Asia/Ho_Chi_Minh"/>
-                        <div class="text-muted" colspan="2">This timezone is used by Gatekeeper for Attendance Logs, system-generated 23:59/00:00 boundary logs, Create Attendances, and Cron. It does not depend on the current Odoo user's timezone.</div>
+                        <div class="text-muted" colspan="2">Fallback timezone used only for new Controllers or legacy logs without Controller. Normal attendance processing uses each Controller's own timezone.</div>
+                    </group>
+                    <group string="Periodic Cron Policy">
+                        <field name="daily_cron_local_run_time" placeholder="00:00"/>
+                        <div class="text-muted" colspan="2">Odoo Scheduled Action should run periodically in UTC, for example every 15 minutes. Each Controller is processed only when its own local time reaches this HH:MM value.</div>
                     </group>
                     <group string="Daily Cron Diagnostics">
-                        <div class="text-muted" colspan="2">UTC is the value stored/queried by Odoo. Local uses the selected Module Timezone.</div>
+                        <div class="text-muted" colspan="2">UTC is the value stored/queried by Odoo. Cron processing is grouped by each Controller Timezone and guarded by the processing ledger.</div>
                         <field name="last_cron_at_utc" readonly="1"/>
                         <field name="last_cron_at_local" readonly="1"/>
                         <field name="last_cron_date" readonly="1"/>

@@ -11,6 +11,9 @@
           installation or upgrade.
         - Admin can enable or run it manually later from:
           Settings -> Technical -> Automation -> Scheduled Actions.
+        - The scheduled action should run periodically in UTC, for example every 15 minutes.
+        - The code decides per Controller whether its local processing time has arrived.
+        - A processing ledger prevents duplicate processing for the same controller business date.
     -->
     <record id="ir_cron_entry_control_create_daily_attendances" model="ir.cron">
         <field name="name">Gatekeeper: Create Daily Attendances</field>
@@ -18,11 +21,10 @@
         <field name="state">code</field>
         <field name="code">model.cron_create_daily_attendances()</field>
         <field name="user_id" ref="base.user_root"/>
-        <field name="interval_number">1</field>
-        <field name="interval_type">days</field>
-        <!-- 17:15 UTC = 00:15 Asia/Ho_Chi_Minh on the next local business day.
-             The cron remains inactive by default so module update will not run attendance creation unexpectedly. -->
-        <field name="nextcall" eval="time.strftime('%Y-%m-%d 17:15:00')"/>
+        <field name="interval_number">15</field>
+        <field name="interval_type">minutes</field>
+        <!-- Initial placeholder only. Cron is inactive by default; enable it after upgrade to run every 15 minutes. -->
+        <field name="nextcall" eval="time.strftime('%Y-%m-%d %H:%M:%S')"/>
         <field name="active">False</field>
     </record>
     </data>

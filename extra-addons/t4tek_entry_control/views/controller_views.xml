@@ -7,6 +7,8 @@
                 <field name="controller_uid"/>
                 <field name="name"/>
                 <field name="status" widget="badge" decoration-success="status == 'online'" decoration-danger="status == 'blocked'" decoration-muted="status == 'offline'"/>
+                <field name="attendance_timezone" optional="show"/>
+                <field name="attendance_timezone_offset" optional="show"/>
                 <field name="last_sync_at"/>
                 <field name="last_heartbeat_at"/>
                 <field name="active"/>
@@ -37,6 +39,11 @@
                             <field name="secret_key" widget="CopyClipboardChar" groups="t4tek_entry_control.group_entry_control_admin,base.group_system"/>
                             <field name="active"/>
                         </group>
+                        <group string="Controller Timezone">
+                            <field name="attendance_timezone"/>
+                            <field name="attendance_timezone_offset" readonly="1"/>
+                            <div class="text-muted" colspan="2">All devices under this Controller use this timezone for device-local business days and 23:59/00:00 boundary logs.</div>
+                        </group>
                         <group string="Runtime Status">
                             <field name="last_auth_at" readonly="1"/>
                             <field name="last_sync_at" readonly="1"/>
@@ -55,6 +62,8 @@
                                     <field name="model"/>
                                     <field name="firmware_version"/>
                                     <field name="ip_address"/>
+                                    <field name="attendance_timezone" optional="show"/>
+                                    <field name="attendance_timezone_offset" optional="show"/>
                                     <field name="status" widget="badge"/>
                                     <field name="last_seen_at"/>
                                     <field name="active"/>
@@ -79,7 +88,8 @@
                                     <field name="employee_id"/>
                                     <field name="direction" widget="badge"/>
                                     <field name="check_time" string="Time"/>
-                                                                            <field name="serial_number" string="Device"/>
+                                    <field name="serial_number" string="Device"/>
+                                    <field name="device_timezone" optional="show"/>
                                     <field name="verify_method"/>
                                     <field name="sync_status" widget="badge"/>
                                 </list>

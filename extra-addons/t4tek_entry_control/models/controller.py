@@ -1,8 +1,22 @@
 import hashlib
 import secrets
-from datetime import timedelta
+from datetime import datetime, timezone, timedelta
+from functools import lru_cache
+from zoneinfo import ZoneInfo, available_timezones
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError
+
+
+@lru_cache(maxsize=1)
+def _controller_tz_selection():
+    zones = sorted(available_timezones())
+    if "Asia/Ho_Chi_Minh" not in zones:
+        zones.insert(0, "Asia/Ho_Chi_Minh")
+    return [(tz, tz) for tz in zones]
+
+
+def _tz_get(self):
+    return _controller_tz_selection()
 
 
 class EntryControlController(models.Model):
@@ -15,6 +29,14 @@ class EntryControlController(models.Model):
     controller_code = fields.Char(string="Controller Code", compute="_compute_controller_code", inverse="_inverse_controller_code", store=True, index=True)
     name = fields.Char(required=True, default="New Controller")
     secret_key = fields.Char(string="Secret Key", required=True, copy=False, groups="t4tek_entry_control.group_entry_control_admin,base.group_system")
+    attendance_timezone = fields.Selection(
+        _tz_get,
+        string="Controller Timezone",
+        required=True,
+        default=lambda self: self._default_attendance_timezone(),
+        help="Business timezone for this Controller. All devices under this Controller use this timezone for device-local days, system-generated 23:59/00:00 boundary logs, and daily attendance cron processing.",
+    )
+    attendance_timezone_offset = fields.Char(string="Current UTC Offset", compute="_compute_attendance_timezone_offset")
 
     last_sync_at = fields.Datetime(string="Last Sync At", readonly=True)
     last_heartbeat_at = fields.Datetime(string="Last Heartbeat At", readonly=True)
@@ -47,6 +69,73 @@ class EntryControlController(models.Model):
         ("controller_uid_unique", "unique(controller_uid)", "Controller ID must be unique."),
     ]
 
+    @api.model
+    def _default_attendance_timezone(self):
+        try:
+            return self.env["entry.control.attendance.log"].sudo()._attendance_timezone_name()
+        except Exception:
+            return "Asia/Ho_Chi_Minh"
+
+    @api.model
+    def _validate_attendance_timezone(self, tz_name):
+        tz_name = str(tz_name or "").strip() or "Asia/Ho_Chi_Minh"
+        try:
+            ZoneInfo(tz_name)
+        except Exception:
+            raise UserError(_("Invalid Controller Timezone '%s'. Please use an IANA timezone name, for example Asia/Ho_Chi_Minh.") % tz_name)
+        return tz_name
+
+    def _effective_attendance_timezone(self):
+        self.ensure_one()
+        return self._validate_attendance_timezone(self.attendance_timezone or self._default_attendance_timezone())
+
+    def _attendance_zoneinfo(self):
+        self.ensure_one()
+        return ZoneInfo(self._effective_attendance_timezone())
+
+    def _timezone_offset_text(self, at_utc=None):
+        self.ensure_one()
+        dt = at_utc or fields.Datetime.now()
+        if not isinstance(dt, datetime):
+            dt = fields.Datetime.to_datetime(dt)
+        if not dt:
+            dt = fields.Datetime.now()
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        local_dt = dt.astimezone(self._attendance_zoneinfo())
+        offset = local_dt.utcoffset() or timedelta(0)
+        total_seconds = int(offset.total_seconds())
+        sign = "+" if total_seconds >= 0 else "-"
+        total_seconds = abs(total_seconds)
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes = remainder // 60
+        return "%s%02d:%02d" % (sign, hours, minutes)
+
+    @api.depends("attendance_timezone")
+    def _compute_attendance_timezone_offset(self):
+        for rec in self:
+            try:
+                rec.attendance_timezone_offset = rec._timezone_offset_text()
+            except Exception:
+                rec.attendance_timezone_offset = "+07:00"
+
+
+    def init(self):
+        """Backfill Controller Timezone for existing Controllers during upgrade."""
+        try:
+            default_tz = self._default_attendance_timezone()
+            self.env.cr.execute(
+                """
+                UPDATE entry_control_controller
+                   SET attendance_timezone = %s
+                 WHERE attendance_timezone IS NULL OR attendance_timezone = ''
+                """,
+                (default_tz,),
+            )
+        except Exception:
+            # Column may not exist yet during early registry/bootstrap on some Odoo builds.
+            pass
+
     @api.depends("controller_uid")
     def _compute_controller_code(self):
         for rec in self:
@@ -72,6 +161,10 @@ class EntryControlController(models.Model):
         for vals in vals_list:
             if vals.get("controller_uid"):
                 vals["controller_uid"] = str(vals["controller_uid"]).strip().upper()
+            if vals.get("attendance_timezone"):
+                vals["attendance_timezone"] = self._validate_attendance_timezone(vals.get("attendance_timezone"))
+            elif not vals.get("attendance_timezone"):
+                vals["attendance_timezone"] = self._default_attendance_timezone()
             if not vals.get("secret_key"):
                 vals["secret_key"] = self._new_secret_key()
             if not vals.get("name"):
@@ -82,6 +175,8 @@ class EntryControlController(models.Model):
         vals = dict(vals or {})
         if vals.get("controller_uid"):
             vals["controller_uid"] = str(vals["controller_uid"]).strip().upper()
+        if vals.get("attendance_timezone"):
+            vals["attendance_timezone"] = self._validate_attendance_timezone(vals.get("attendance_timezone"))
         return super().write(vals)
 
     @api.model

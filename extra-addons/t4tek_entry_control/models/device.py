@@ -8,6 +8,8 @@ class EntryControlDevice(models.Model):
     _order = "last_seen_at desc, id desc"
 
     controller_id = fields.Many2one("entry.control.controller", required=True, ondelete="cascade", index=True)
+    attendance_timezone = fields.Selection(related="controller_id.attendance_timezone", string="Controller Timezone", readonly=True)
+    attendance_timezone_offset = fields.Char(related="controller_id.attendance_timezone_offset", string="Current UTC Offset", readonly=True)
     name = fields.Char(string="Device Name", required=True)
     serial_number = fields.Char(string="Serial Number", required=True, index=True)
     model = fields.Char()
