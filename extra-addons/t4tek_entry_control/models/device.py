@@ -100,18 +100,43 @@ class EntryControlDevice(models.Model):
         active_status = str(payload.get("active_status") or "active").strip().lower()
         status = "deactive" if active_status == "deactive" else ("online" if connection_status == "online" else "offline")
 
-        # Serial Number is the canonical device identity. If a physical device is
-        # moved to another Controller, reassign it instead of creating a duplicate.
-        device = self.sudo().search([("serial_number", "=", serial)], limit=1)
+        # Serial Number is the canonical device identity. Prefer an existing row
+        # already assigned to the reporting Controller when old databases contain
+        # duplicate serial rows. Otherwise use the canonical serial row and decide
+        # below whether this report is allowed to claim/reassign the device.
+        device = self.sudo().search([("controller_id", "=", controller.id), ("serial_number", "=", serial)], limit=1)
         if not device:
-            # Tolerant fallback for old databases that may still contain duplicate
-            # rows before the unique constraint is cleaned up.
-            device = self.sudo().search([("controller_id", "=", controller.id), ("serial_number", "=", serial)], limit=1)
+            device = self.sudo().search([("serial_number", "=", serial)], limit=1)
 
         received_at = fields.Datetime.now()
         payload_online_at = self._datetime_from_payload(payload, "last_online_at", "last_seen_at")
         payload_offline_at = self._datetime_from_payload(payload, "last_offline_at")
         payload_status_changed_at = self._datetime_from_payload(payload, "last_status_changed_at")
+
+        # Cross-controller ownership rule:
+        # - A physical device may be moved to another Controller. In that case an
+        #   ONLINE report from the new Controller is strong evidence and should
+        #   reassign the device to the new Controller.
+        # - A stale OFFLINE report from the old Controller must NOT move the
+        #   device back to the old Controller, otherwise Odoo will keep showing
+        #   the old Controller after a real handover.
+        # - If the incoming report is offline but includes a later last_online_at
+        #   than Odoo currently has, accept it as a newer ownership signal.
+        allow_controller_claim = True
+        if device and device.controller_id and device.controller_id.id != controller.id:
+            incoming_online_at = payload_online_at or (received_at if status == "online" else False)
+            existing_online_at = device.last_online_at
+            allow_controller_claim = False
+            if status == "online":
+                allow_controller_claim = True
+            elif incoming_online_at and (not existing_online_at or incoming_online_at > existing_online_at):
+                allow_controller_claim = True
+
+            if not allow_controller_claim:
+                # Ignore stale cross-controller offline/deactive reports. Do not
+                # update status/offline time/IP because that would overwrite the
+                # active Controller's view with stale data from the previous one.
+                return device
 
         vals = {
             "controller_id": controller.id,
