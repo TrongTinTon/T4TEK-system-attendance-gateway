@@ -293,9 +293,23 @@ class EntryControlAttendanceLog(models.Model):
         return [fname for fname in preferred if fname in Employee._fields]
 
     @api.model
-    def find_employee_by_employee_id(self, employee_id):
+    def _employee_is_archived(self, employee):
+        return bool(employee and "active" in employee._fields and not employee.active)
+
+    @api.model
+    def _find_employee_by_employee_id_any(self, employee_id):
+        """Find an Employee Code even if the employee is archived.
+
+        Attendance Logs must be able to tell the difference between:
+        - code not found on Odoo; and
+        - code found, but the employee has been archived/inactivated.
+
+        Archived employees are not returned as the mapped ``employee_id`` for
+        new attendance logs, so daily attendance generation will not process
+        them accidentally.
+        """
         raw = str(employee_id or "").strip()
-        Employee = self.env["hr.employee"].sudo()
+        Employee = self.env["hr.employee"].sudo().with_context(active_test=False)
         if not raw:
             return Employee.browse()
         for field_name in self._employee_code_fields():
@@ -307,16 +321,26 @@ class EntryControlAttendanceLog(models.Model):
         except Exception:
             return Employee.browse()
 
-    def find_employee_by_pin(self, pin):
+    @api.model
+    def find_employee_by_employee_id(self, employee_id):
+        emp = self._find_employee_by_employee_id_any(employee_id)
+        return emp if emp and not self._employee_is_archived(emp) else self.env["hr.employee"].browse()
+
+    @api.model
+    def _find_employee_by_pin_any(self, pin):
         pin = str(pin or "").strip()
         if not pin:
             return self.env["hr.employee"].browse()
-        Employee = self.env["hr.employee"].sudo()
+        Employee = self.env["hr.employee"].sudo().with_context(active_test=False)
         for field_name in self._employee_code_fields() + self._employee_pin_fields():
             emp = Employee.search([(field_name, "=", pin)], limit=1)
             if emp:
                 return emp
         return Employee.browse()
+
+    def find_employee_by_pin(self, pin):
+        emp = self._find_employee_by_pin_any(pin)
+        return emp if emp and not self._employee_is_archived(emp) else self.env["hr.employee"].browse()
 
     # =========================================================================
     # TIME NORMALIZATION
@@ -530,15 +554,30 @@ class EntryControlAttendanceLog(models.Model):
         Device = self.env["entry.control.device"].sudo()
         device = Device.search([("serial_number", "=", serial)], limit=1) if serial else Device.browse()
 
-        employee = self.find_employee_by_employee_id(api_employee_id)
+        employee_any = self._find_employee_by_employee_id_any(api_employee_id)
+        employee_archived = self._employee_is_archived(employee_any)
+        employee = employee_any if employee_any and not employee_archived else self.env["hr.employee"].browse()
+
         if not employee and legacy_pin:
-            employee = self.find_employee_by_pin(legacy_pin)
+            pin_employee_any = self._find_employee_by_pin_any(legacy_pin)
+            pin_employee_archived = self._employee_is_archived(pin_employee_any)
+            if pin_employee_any and pin_employee_archived:
+                employee_archived = True
+            elif pin_employee_any:
+                employee = pin_employee_any
 
         existing = self._find_existing_log(controller, device, serial, employee, api_employee_id, check_time, check_type, verify_type)
         if existing:
             update_vals = {}
             if api_employee_id and not existing.employee_code_controller:
                 update_vals["employee_code_controller"] = api_employee_id
+            if employee_archived:
+                update_vals.update({
+                    "employee_id": False,
+                    "sync_status": "skipped",
+                    "error_message": "Employee is archived/inactive on Odoo; raw Controller employee code was kept, but this log was not linked to hr.employee.",
+                    "message": "Skipped because the matched employee is archived/inactive on Odoo.",
+                })
             if update_vals:
                 existing.write(update_vals)
             return existing, True
@@ -560,7 +599,9 @@ class EntryControlAttendanceLog(models.Model):
             "verify_method": data.get("verify_method") or data.get("verifyMethod") or self._verify_method_from_type(verify_type),
             "verify_type": verify_type,
             "check_type": check_type,
-            "sync_status": "success",
+            "sync_status": "skipped" if employee_archived else "success",
+            "error_message": "Employee is archived/inactive on Odoo; raw Controller employee code was kept, but this log was not linked to hr.employee." if employee_archived else False,
+            "message": "Skipped because the matched employee is archived/inactive on Odoo." if employee_archived else False,
         }
         return self.sudo().create(vals), False
 
