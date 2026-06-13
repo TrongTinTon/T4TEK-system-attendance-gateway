@@ -273,3 +273,61 @@ class EntryControlController(models.Model):
         self._check_gatekeeper_admin()
         self.write({"status": "offline", "active": True, "last_error": False})
         return True
+
+    @api.model
+    def _heartbeat_timeout_seconds(self):
+        """Timeout used by the server-side connection watchdog.
+
+        The Controller actively calls Odoo APIs. When those calls stop for too
+        long, Odoo marks the Controller offline and marks its devices unknown.
+        """
+        ICP = self.env["ir.config_parameter"].sudo()
+        value = ICP.get_param("entry_control.controller_heartbeat_timeout_seconds", "300")
+        try:
+            seconds = int(value)
+        except Exception:
+            seconds = 300
+        return max(60, seconds)
+
+    @api.model
+    def cron_check_connection_status(self):
+        """Mark stale Controllers offline and their Devices unknown.
+
+        Flow:
+        - Controller heartbeat stale  -> Controller = offline
+        - Devices under that Controller -> unknown
+        - Real device disconnect while Controller is alive is still handled by
+          /devices/report and remains Device = offline.
+        """
+        now = fields.Datetime.now()
+        timeout_seconds = self._heartbeat_timeout_seconds()
+        threshold = now - timedelta(seconds=timeout_seconds)
+
+        stale_controllers = self.sudo().search([
+            ("active", "=", True),
+            ("status", "=", "online"),
+            "|",
+            ("last_heartbeat_at", "=", False),
+            ("last_heartbeat_at", "<", threshold),
+        ])
+        if not stale_controllers:
+            return True
+
+        Device = self.env["entry.control.device"].sudo()
+        devices_to_unknown = Device.search([
+            ("controller_id", "in", stale_controllers.ids),
+            ("status", "in", ["online", "offline"]),
+        ])
+
+        message = _("Controller heartbeat timeout. No heartbeat received within %s seconds.") % timeout_seconds
+        stale_controllers.write({
+            "status": "offline",
+            "last_error": message,
+        })
+
+        if devices_to_unknown:
+            devices_to_unknown.write({
+                "status": "unknown",
+                "last_status_changed_at": now,
+            })
+        return True

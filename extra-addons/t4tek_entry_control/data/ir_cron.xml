@@ -27,5 +27,28 @@
         <field name="nextcall" eval="time.strftime('%Y-%m-%d %H:%M:%S')"/>
         <field name="active">False</field>
     </record>
+
+
+    <!--
+        Scheduled Action: server-side connection watchdog.
+
+        This cron does not ping Controllers or Devices directly. It checks the
+        last heartbeat time received from each Controller:
+        - stale Controller heartbeat -> Controller becomes Offline
+        - Devices under that Controller become Unknown
+        Real physical Device Offline is still reported by an online Controller
+        through /api/entry_control/v1/devices/report.
+    -->
+    <record id="ir_cron_entry_control_check_connection_status" model="ir.cron">
+        <field name="name">Gatekeeper: Check Connection Status</field>
+        <field name="model_id" ref="model_entry_control_controller"/>
+        <field name="state">code</field>
+        <field name="code">model.cron_check_connection_status()</field>
+        <field name="user_id" ref="base.user_root"/>
+        <field name="interval_number">1</field>
+        <field name="interval_type">minutes</field>
+        <field name="nextcall" eval="time.strftime('%Y-%m-%d %H:%M:%S')"/>
+        <field name="active">True</field>
+    </record>
     </data>
 </odoo>

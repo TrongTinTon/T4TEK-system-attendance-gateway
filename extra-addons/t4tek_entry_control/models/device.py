@@ -25,7 +25,13 @@ class EntryControlDevice(models.Model):
     ], default="tcp", required=True)
     status = fields.Selection([
         ("online", "Online"),
+        # Device is offline because the Controller is online and explicitly
+        # reported that the physical device cannot be reached.
         ("offline", "Offline"),
+        # Device status is unknown because Odoo lost the Controller heartbeat,
+        # so Odoo cannot trust whether the physical device is currently online
+        # or offline. The next Controller device report will overwrite this.
+        ("unknown", "Unknown"),
         ("deactive", "Deactive"),
     ], default="offline", index=True)
     active = fields.Boolean(default=True, index=True)
@@ -98,6 +104,9 @@ class EntryControlDevice(models.Model):
             return self.browse()
         connection_status = str(payload.get("connection_status") or payload.get("status") or "offline").strip().lower()
         active_status = str(payload.get("active_status") or "active").strip().lower()
+        # Only the local Controller is allowed to confirm a real physical
+        # online/offline state. Server-side heartbeat timeout uses "unknown"
+        # instead of guessing that every device is physically offline.
         status = "deactive" if active_status == "deactive" else ("online" if connection_status == "online" else "offline")
 
         # Serial Number is the canonical device identity. Prefer an existing row

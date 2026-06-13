@@ -11,6 +11,7 @@
                     </group>
                     <group string="Periodic Cron Policy">
                         <field name="daily_cron_local_run_time" placeholder="00:00"/>
+                        <field name="controller_heartbeat_timeout_seconds"/>
                         <div class="text-muted" colspan="2">Odoo Scheduled Action should run periodically in UTC, for example every 15 minutes. Each Controller is processed only when its own local time reaches this HH:MM value.</div>
                     </group>
                     <group string="Daily Cron Diagnostics">

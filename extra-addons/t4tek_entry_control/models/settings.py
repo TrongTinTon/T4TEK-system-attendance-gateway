@@ -38,6 +38,11 @@ class EntryControlSettings(models.TransientModel):
         default="00:00",
         help="Local time in each Controller Timezone when the periodic UTC cron is allowed to process the previous business day. Format: HH:MM, for example 00:00 or 00:15.",
     )
+    controller_heartbeat_timeout_seconds = fields.Integer(
+        string="Controller Heartbeat Timeout (seconds)",
+        default=300,
+        help="If Odoo does not receive any Controller API call within this timeout, the server-side watchdog marks the Controller offline and its Devices unknown.",
+    )
 
     last_cron_at_utc = fields.Char(string="Last Cron Run UTC", readonly=True)
     last_cron_at_local = fields.Char(string="Last Cron Run Local", readonly=True)
@@ -68,6 +73,11 @@ class EntryControlSettings(models.TransientModel):
             res["attendance_timezone"] = self._default_attendance_timezone() or "Asia/Ho_Chi_Minh"
         if "daily_cron_local_run_time" in fields_list:
             res["daily_cron_local_run_time"] = ICP.get_param(Log._CONFIG_CRON_LOCAL_RUN_TIME, Log._DEFAULT_CRON_LOCAL_RUN_TIME)
+        if "controller_heartbeat_timeout_seconds" in fields_list:
+            try:
+                res["controller_heartbeat_timeout_seconds"] = int(ICP.get_param("entry_control.controller_heartbeat_timeout_seconds", "300") or 300)
+            except Exception:
+                res["controller_heartbeat_timeout_seconds"] = 300
 
         metric_map = {
             "last_cron_at_utc": Log._CONFIG_CRON_LAST_AT_UTC,
@@ -121,6 +131,15 @@ class EntryControlSettings(models.TransientModel):
             raise UserError(_("Daily Local Processing Time must be between 00:00 and 23:59."))
         return "%02d:%02d" % (hour, minute)
 
+    def _validate_heartbeat_timeout_seconds(self, value):
+        try:
+            seconds = int(value or 300)
+        except Exception:
+            raise UserError(_("Controller Heartbeat Timeout must be a number of seconds."))
+        if seconds < 60:
+            raise UserError(_("Controller Heartbeat Timeout must be at least 60 seconds."))
+        return seconds
+
     def _check_gatekeeper_admin(self):
         if not (self.env.user.has_group("t4tek_entry_control.group_entry_control_admin") or self.env.user.has_group("base.group_system")):
             raise UserError(_("Only Gatekeeper Administrators can change Gatekeeper Settings."))
@@ -130,16 +149,18 @@ class EntryControlSettings(models.TransientModel):
         self._check_gatekeeper_admin()
         tz_name = self._validate_timezone(self.attendance_timezone)
         run_time = self._validate_local_run_time(self.daily_cron_local_run_time)
+        heartbeat_timeout = self._validate_heartbeat_timeout_seconds(self.controller_heartbeat_timeout_seconds)
         Log = self._log_model()
         ICP = self.env["ir.config_parameter"].sudo()
         ICP.set_param(Log._CONFIG_ATTENDANCE_TIMEZONE, tz_name)
         ICP.set_param(Log._CONFIG_CRON_LOCAL_RUN_TIME, run_time)
+        ICP.set_param("entry_control.controller_heartbeat_timeout_seconds", str(heartbeat_timeout))
         return {
             "type": "ir.actions.client",
             "tag": "display_notification",
             "params": {
                 "title": _("Gatekeeper Settings"),
-                "message": _("Default timezone saved: %s. Daily local processing time: %s") % (tz_name, run_time),
+                "message": _("Default timezone saved: %s. Daily local processing time: %s. Heartbeat timeout: %s seconds.") % (tz_name, run_time, heartbeat_timeout),
                 "type": "success",
                 "sticky": False,
                 "next": {"type": "ir.actions.act_window_close"},
@@ -152,11 +173,14 @@ class EntryControlSettings(models.TransientModel):
         Log = self._log_model()
         tz_name = Log._DEFAULT_ATTENDANCE_TIMEZONE
         run_time = Log._DEFAULT_CRON_LOCAL_RUN_TIME
+        heartbeat_timeout = 300
         ICP = self.env["ir.config_parameter"].sudo()
         ICP.set_param(Log._CONFIG_ATTENDANCE_TIMEZONE, tz_name)
         ICP.set_param(Log._CONFIG_CRON_LOCAL_RUN_TIME, run_time)
+        ICP.set_param("entry_control.controller_heartbeat_timeout_seconds", str(heartbeat_timeout))
         self.attendance_timezone = tz_name
         self.daily_cron_local_run_time = run_time
+        self.controller_heartbeat_timeout_seconds = heartbeat_timeout
         return {
             "type": "ir.actions.client",
             "tag": "display_notification",
