@@ -35,8 +35,8 @@ Payload shape:
 
 ## Fixes
 
-- Store the raw Controller local attendance log id in `controller_local_id`.
+- Echo the raw Controller local attendance log id in the API response as `local_id` / `id` for push acknowledgement.
 - Return `local_id` and `id` in each API result so the Controller can mark local logs as pushed successfully.
 - Keep `attendance_log_id` / `server_attendance_log_id` for the Odoo log id.
 - Improve duplicate detection for unknown employees by including raw `employee_code_controller`.
-- Add optional UI field `Controller Local ID` to Attendance Logs for troubleshooting.
+- Later UI cleanup removes Controller Local ID from Attendance Logs; it is not stored as Odoo audit data.

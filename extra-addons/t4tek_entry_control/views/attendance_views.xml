@@ -39,11 +39,9 @@
                             class="btn-primary"
                             display="always" groups="t4tek_entry_control.group_entry_control_manager,base.group_system"/>
                 </header>
-                <field name="controller_name" string="Controller" optional="show"/>
+                <field name="controller_name" string="Controller Name" optional="show"/>
                 <field name="employee_id"/>
-                <field name="employee_code_server" string="Employee Code (Server)" optional="show"/>
                 <field name="employee_code_controller" string="Employee Code (Controller)" optional="show"/>
-                <field name="controller_local_id" string="Controller Local ID" optional="hide"/>
                 <field name="direction" widget="badge" decoration-success="direction == 'in'" decoration-info="direction == 'out'"/>
                 <field name="check_time" string="Time"/>
                 <field name="serial_number" string="Device"/>
@@ -62,16 +60,12 @@
                 <sheet>
                     <group>
                         <group string="Source">
-                            <field name="controller_id"/>
                             <field name="controller_name" string="Controller Name"/>
                             <field name="serial_number" string="Device"/>
                             <field name="device_timezone"/>
                             <field name="device_id"/>
                             <field name="employee_id"/>
-                            <field name="employee_code_server" string="Employee Code (Server)"/>
                             <field name="employee_code_controller" string="Employee Code (Controller)"/>
-                <field name="controller_local_id" string="Controller Local ID"/>
-                            <field name="controller_local_id" string="Controller Local ID"/>
                         </group>
                         <group string="Attendance">
                             <field name="direction"/>
@@ -94,9 +88,8 @@
         <field name="model">entry.control.attendance.log</field>
         <field name="arch" type="xml">
             <search string="Attendance Logs">
-                <field name="controller_name" string="Controller"/>
+                <field name="controller_name" string="Controller Name"/>
                 <field name="employee_id"/>
-                <field name="employee_code_server" string="Employee Code (Server)"/>
                 <field name="employee_code_controller" string="Employee Code (Controller)"/>
                 <field name="serial_number" string="Device"/>
                 <field name="device_timezone"/>

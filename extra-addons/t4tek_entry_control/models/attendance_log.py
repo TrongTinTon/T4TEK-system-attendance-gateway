@@ -217,20 +217,12 @@ class EntryControlAttendanceLog(models.Model):
     # FIELDS DEFINITION
     # =========================================================================
     controller_id = fields.Many2one("entry.control.controller", ondelete="set null", index=True)
-    controller_name = fields.Char(string="Controller", related="controller_id.name", store=True, readonly=True, index=True)
+    controller_name = fields.Char(string="Controller Name", related="controller_id.name", store=True, readonly=True, index=True)
     device_id = fields.Many2one("entry.control.device", string="Device Record", ondelete="set null", index=True)
     serial_number = fields.Char(string="Device", index=True, readonly=True)
     device_timezone = fields.Char(string="Device Timezone", readonly=True, index=True)
     employee_id = fields.Many2one("hr.employee", ondelete="set null", index=True)
-    employee_code_server = fields.Char(
-        string="Employee Code (Server)",
-        compute="_compute_employee_code_compare",
-        store=True,
-        readonly=True,
-        index=True,
-    )
     employee_code_controller = fields.Char(string="Employee Code (Controller)", readonly=True, index=True)
-    controller_local_id = fields.Char(string="Controller Local Log ID", readonly=True, index=True)
     direction = fields.Selection([("in", "Check In"), ("out", "Check Out")], default="in", required=True, index=True)
     check_time = fields.Datetime(string="Check Time", required=True, index=True)
     verify_method = fields.Selection([
@@ -265,6 +257,7 @@ class EntryControlAttendanceLog(models.Model):
             "event_hash", "pin", "direction_source", "device_direction", "device_check_type",
             "is_system_generated", "check_time_local", "device_check_time", "check_time_stored_display",
             "check_time_display", "check_time_db_utc", "check_time_device_local", "time_display",
+            "employee_code_server",
         ):
             self.env.cr.execute('ALTER TABLE IF EXISTS entry_control_attendance_log DROP COLUMN IF EXISTS "%s"' % column)
             
@@ -283,29 +276,6 @@ class EntryControlAttendanceLog(models.Model):
                AND device_timezone IS NOT NULL
                AND device_timezone <> ''
         """)
-
-    # =========================================================================
-    # DISPLAY / AUDIT HELPERS
-    # =========================================================================
-    @api.depends("employee_id", "employee_id.code")
-    def _compute_employee_code_compare(self):
-        """Show the Employee Code currently stored on the Odoo server.
-
-        Attendance Logs also keep ``employee_code_controller`` as the raw code
-        received from the Controller. Displaying both fields side by side makes
-        it easy to compare whether the Controller sent the same code as the
-        server-side employee master data.
-        """
-        for rec in self:
-            value = ""
-            employee = rec.employee_id.sudo() if rec.employee_id else False
-            if employee:
-                for field_name in rec._employee_code_fields():
-                    if field_name in employee._fields:
-                        value = str(employee[field_name] or "").strip()
-                        if value:
-                            break
-            rec.employee_code_server = value
 
     # =========================================================================
     # EMPLOYEE MAPPING HELPERS
@@ -515,7 +485,7 @@ class EntryControlAttendanceLog(models.Model):
         return "mixed"
 
     @api.model
-    def _find_existing_log(self, controller, device, serial_number, employee, employee_code_controller, check_time, check_type, verify_type, controller_local_id=False):
+    def _find_existing_log(self, controller, device, serial_number, employee, employee_code_controller, check_time, check_type, verify_type):
         domain = [
             ("controller_id", "=", controller.id if controller else False),
             ("serial_number", "=", serial_number or ""),
@@ -523,10 +493,6 @@ class EntryControlAttendanceLog(models.Model):
             ("check_type", "=", check_type or ""),
             ("verify_type", "=", verify_type or ""),
         ]
-        if controller_local_id:
-            local_match = self.sudo().search(domain + [("controller_local_id", "=", str(controller_local_id))], limit=1)
-            if local_match:
-                return local_match
         if employee:
             domain.append(("employee_id", "=", employee.id))
         else:
@@ -543,14 +509,6 @@ class EntryControlAttendanceLog(models.Model):
     @api.model
     def ingest_direct_log(self, controller, data):
         data = dict(data or {})
-        controller_local_id = str(
-            data.get("local_id")
-            or data.get("localId")
-            or data.get("id")
-            or data.get("controller_local_id")
-            or data.get("controllerLocalId")
-            or ""
-        ).strip()
         serial = data.get("serial_number")
         api_employee_id = str(
             data.get("employee_id")
@@ -576,13 +534,11 @@ class EntryControlAttendanceLog(models.Model):
         if not employee and legacy_pin:
             employee = self.find_employee_by_pin(legacy_pin)
 
-        existing = self._find_existing_log(controller, device, serial, employee, api_employee_id, check_time, check_type, verify_type, controller_local_id)
+        existing = self._find_existing_log(controller, device, serial, employee, api_employee_id, check_time, check_type, verify_type)
         if existing:
             update_vals = {}
             if api_employee_id and not existing.employee_code_controller:
                 update_vals["employee_code_controller"] = api_employee_id
-            if controller_local_id and not existing.controller_local_id:
-                update_vals["controller_local_id"] = controller_local_id
             if update_vals:
                 existing.write(update_vals)
             return existing, True
@@ -593,7 +549,6 @@ class EntryControlAttendanceLog(models.Model):
             "serial_number": serial,
             "employee_id": employee.id if employee else False,
             "employee_code_controller": api_employee_id,
-            "controller_local_id": controller_local_id,
             "direction": self._infer_direction(employee, check_time),
             "check_time": check_time,
             "device_timezone": self._normalize_device_timezone(

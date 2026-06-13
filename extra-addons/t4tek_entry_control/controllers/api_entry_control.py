@@ -587,7 +587,6 @@ class EntryControlAPI(http.Controller):
                     # Current Controller code reads result.local_id first, then result.id.
                     "local_id": local_id,
                     "id": local_id,
-                    "controller_local_id": local_id,
                     "attendance_log_id": rec.id,
                     "server_attendance_log_id": rec.id,
                     "success": rec.sync_status != "failed",
@@ -596,7 +595,6 @@ class EntryControlAPI(http.Controller):
                     "direction": rec.direction,
                     "device_timezone": rec.device_timezone,
                     "employee_code_controller": rec.employee_code_controller,
-                    "employee_code_server": rec.employee_code_server,
                     "controller": rec.controller_name,
                     "duplicate": duplicate,
                 })
