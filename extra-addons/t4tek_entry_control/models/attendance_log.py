@@ -776,8 +776,8 @@ class EntryControlAttendanceLog(models.Model):
         minutes. The cron itself does not represent any business timezone. Each
         Controller decides whether it is due by converting the current UTC time
         into its own ``attendance_timezone`` and comparing it with the configured
-        local processing time. A processing ledger prevents duplicate processing
-        for the same ``controller_id + business_date``.
+        local processing time. A processing ledger keeps one snapshot row per
+        Controller and prevents duplicate processing of the same business date.
         """
         Log = self.env["entry.control.attendance.log"].sudo()
         Run = self.env["entry.control.attendance.cron.run"].sudo()
@@ -823,12 +823,14 @@ class EntryControlAttendanceLog(models.Model):
                 due_at_utc=due.get("due_at_utc"),
             )
 
-            if run.status == "done":
+            run_business_date = fields.Date.to_date(run.business_date) if run.business_date else False
+            if run.status == "done" and run_business_date and run_business_date >= fields.Date.to_date(business_date):
                 skipped_done += 1
                 _logger.info(
-                    "Skip controller %s business date %s because ledger is already done.",
+                    "Skip controller %s business date %s because the single controller ledger is already done for %s.",
                     controller.display_name,
                     business_date,
+                    run_business_date,
                 )
                 continue
             if run.status == "running" and not run._is_stale_running():

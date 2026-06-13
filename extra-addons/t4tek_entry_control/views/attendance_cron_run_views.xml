@@ -3,9 +3,9 @@
         <field name="name">entry.control.attendance.cron.run.list</field>
         <field name="model">entry.control.attendance.cron.run</field>
         <field name="arch" type="xml">
-            <list string="Attendance Processing Ledger" decoration-success="status == 'done'" decoration-warning="status == 'running'" decoration-danger="status == 'failed'">
+            <list string="Attendance Processing Ledger - One Row per Controller" decoration-success="status == 'done'" decoration-warning="status == 'running'" decoration-danger="status == 'failed'">
                 <field name="controller_id"/>
-                <field name="business_date"/>
+                <field name="business_date" string="Last Processed Business Date"/>
                 <field name="timezone"/>
                 <field name="local_run_time"/>
                 <field name="due_at_utc"/>
@@ -25,12 +25,12 @@
         <field name="name">entry.control.attendance.cron.run.form</field>
         <field name="model">entry.control.attendance.cron.run</field>
         <field name="arch" type="xml">
-            <form string="Attendance Processing Ledger">
+            <form string="Attendance Processing Ledger - One Row per Controller">
                 <sheet>
                     <group>
                         <group string="Scope">
                             <field name="controller_id" readonly="1"/>
-                            <field name="business_date" readonly="1"/>
+                            <field name="business_date" string="Last Processed Business Date" readonly="1"/>
                             <field name="timezone" readonly="1"/>
                             <field name="local_run_time" readonly="1"/>
                             <field name="due_at_utc" readonly="1"/>

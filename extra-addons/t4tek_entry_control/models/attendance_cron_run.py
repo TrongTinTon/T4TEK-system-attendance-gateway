@@ -6,7 +6,7 @@ from odoo import api, fields, models, _
 class EntryControlAttendanceCronRun(models.Model):
     _name = "entry.control.attendance.cron.run"
     _description = "Gatekeeper Attendance Processing Ledger"
-    _order = "business_date desc, controller_id, id desc"
+    _order = "controller_id, id desc"
     _rec_name = "display_name"
 
     display_name = fields.Char(compute="_compute_display_name", store=False)
@@ -17,7 +17,7 @@ class EntryControlAttendanceCronRun(models.Model):
         index=True,
         ondelete="cascade",
     )
-    business_date = fields.Date(string="Business Date", required=True, index=True)
+    business_date = fields.Date(string="Last Processed Business Date", required=True, index=True)
     timezone = fields.Char(string="Controller Timezone", required=True)
     local_run_time = fields.Char(string="Local Run Time", default="00:00")
     due_at_utc = fields.Datetime(string="Due At UTC", index=True)
@@ -41,12 +41,45 @@ class EntryControlAttendanceCronRun(models.Model):
     error_message = fields.Text(readonly=True)
 
     _sql_constraints = [
+        # Keep the legacy DB constraint for backward compatibility with existing
+        # databases. The runtime logic below now keeps only one ledger row per
+        # Controller and updates that row as a snapshot.
         (
             "controller_business_date_unique",
             "unique(controller_id, business_date)",
             "This Controller business date has already been scheduled or processed.",
         ),
     ]
+
+    def init(self):
+        """Collapse legacy per-day ledger rows into one row per Controller.
+
+        Older versions stored one ledger row for each ``controller_id +
+        business_date``. This version keeps one snapshot row per Controller. On
+        module upgrade, keep the newest business date for each Controller and
+        remove older rows before creating the uniqueness guard.
+        """
+        self.env.cr.execute("""
+            WITH ranked AS (
+                SELECT
+                    id,
+                    row_number() OVER (
+                        PARTITION BY controller_id
+                        ORDER BY business_date DESC NULLS LAST, write_date DESC NULLS LAST, id DESC
+                    ) AS rn
+                FROM entry_control_attendance_cron_run
+                WHERE controller_id IS NOT NULL
+            )
+            DELETE FROM entry_control_attendance_cron_run r
+            USING ranked
+            WHERE r.id = ranked.id
+              AND ranked.rn > 1
+        """)
+        self.env.cr.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS entry_control_attendance_cron_run_controller_unique_idx
+            ON entry_control_attendance_cron_run (controller_id)
+            WHERE controller_id IS NOT NULL
+        """)
 
     @api.depends("controller_id", "business_date", "status")
     def _compute_display_name(self):
@@ -59,26 +92,63 @@ class EntryControlAttendanceCronRun(models.Model):
 
     @api.model
     def _get_or_create_controller_day_run(self, controller, business_date, timezone_name, local_run_time, due_at_utc):
+        """Return the single processing ledger row for one Controller.
+
+        New rule: the ledger is a Controller snapshot, not a per-day history
+        table. Therefore each Controller owns exactly one row. The row's
+        ``business_date`` represents the current/last processed business date.
+        """
         controller = controller.sudo()
         business_date = fields.Date.to_date(business_date)
-        run = self.search([
-            ("controller_id", "=", controller.id),
-            ("business_date", "=", business_date),
-        ], limit=1)
+        runs = self.search(
+            [("controller_id", "=", controller.id)],
+            order="business_date desc, id desc",
+        )
+        run = runs[:1]
+        if len(runs) > 1:
+            # Backward-compatible cleanup for legacy databases that still have
+            # one row per controller/day.
+            (runs - run).unlink()
+
         vals = {
             "timezone": timezone_name or controller.attendance_timezone or "Asia/Ho_Chi_Minh",
             "local_run_time": local_run_time or "00:00",
             "due_at_utc": due_at_utc,
         }
+        reset_vals = {
+            "status": "pending",
+            "started_at": False,
+            "finished_at": False,
+            "local_started_at": False,
+            "employee_count": 0,
+            "log_count": 0,
+            "created_count": 0,
+            "updated_count": 0,
+            "skipped_count": 0,
+            "failed_count": 0,
+            "db_start": False,
+            "db_end": False,
+            "error_message": False,
+        }
         if run:
-            # Keep timezone/due metadata fresh if the Controller timezone was changed before processing.
-            if run.status in ("pending", "failed"):
+            current_business_date = fields.Date.to_date(run.business_date) if run.business_date else False
+            if current_business_date != business_date:
+                if run.status == "running" and not run._is_stale_running():
+                    # Do not overwrite an active run. The next cron tick will
+                    # retry/update after the run finishes or becomes stale.
+                    run.write(vals)
+                    return run
+                vals.update(reset_vals)
+                vals["business_date"] = business_date
+                run.write(vals)
+            elif run.status in ("pending", "failed", "running"):
                 run.write(vals)
             return run
+
+        vals.update(reset_vals)
         vals.update({
             "controller_id": controller.id,
             "business_date": business_date,
-            "status": "pending",
         })
         return self.create(vals)
 
