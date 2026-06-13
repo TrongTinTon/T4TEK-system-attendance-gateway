@@ -573,14 +573,31 @@ class EntryControlAPI(http.Controller):
                 _logger.info("--- [API PUSH] Log index %s từ thiết bị gửi lên: %s", idx, str(log))
                 rec, duplicate = Log.ingest_direct_log(controller, log)
                 _logger.info("--- [ingest_direct_log] Log index %s đã xử lý: %s", idx, str(log))
+                local_id = (
+                    log.get("local_id")
+                    or log.get("localId")
+                    or log.get("id")
+                    or log.get("controller_local_id")
+                    or log.get("controllerLocalId")
+                )
                 results.append({
                     "index": idx,
+                    # Return the Controller local log id exactly as received so
+                    # the Controller can mark ec_attendance_log.push_status=success.
+                    # Current Controller code reads result.local_id first, then result.id.
+                    "local_id": local_id,
+                    "id": local_id,
+                    "controller_local_id": local_id,
                     "attendance_log_id": rec.id,
+                    "server_attendance_log_id": rec.id,
                     "success": rec.sync_status != "failed",
                     "status": "success" if rec.sync_status != "failed" else "failed",
                     "message": rec.error_message or "",
                     "direction": rec.direction,
                     "device_timezone": rec.device_timezone,
+                    "employee_code_controller": rec.employee_code_controller,
+                    "employee_code_server": rec.employee_code_server,
+                    "controller": rec.controller_name,
                     "duplicate": duplicate,
                 })
                 if rec.sync_status == "failed":
