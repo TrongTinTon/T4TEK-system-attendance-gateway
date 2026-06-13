@@ -63,7 +63,6 @@
                             <field name="controller_name" string="Controller Name"/>
                             <field name="serial_number" string="Device"/>
                             <field name="device_timezone"/>
-                            <field name="device_id"/>
                             <field name="employee_id"/>
                             <field name="employee_code_controller" string="Employee Code (Controller)"/>
                         </group>
@@ -93,7 +92,6 @@
                 <field name="employee_code_controller" string="Employee Code (Controller)"/>
                 <field name="serial_number" string="Device"/>
                 <field name="device_timezone"/>
-                <field name="device_id"/>
                 <field name="direction"/>
                 <filter name="filter_check_in" string="Check In" domain="[('direction','=','in')]"/>
                 <filter name="filter_check_out" string="Check Out" domain="[('direction','=','out')]"/>
